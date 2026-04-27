@@ -1,0 +1,28 @@
+Package: nlmixr2sse
+Title: Stochastic Simulation and Estimation for nlmixr2 Models
+Version: 0.1
+Authors@R: c(
+    person("Justin", "Wilkins", email = "justin.wilkins@occams.com", role = c("aut", "cre"),
+           comment = c(ORCID = "0000-0002-7099-9396"))
+  )
+Maintainer: Justin Wilkins <justin.wilkins@occams.com>
+Description: Stochastic simulation and estimation infrastructure for
+    nlmixr2 fits, including control objects, alternative-model
+    specifications, resumable run-directory setup, and shared-summary
+    scaffolding for future SSE workflows.
+Depends:
+    R (>= 4.0)
+License: GPL (>= 3)
+URL: https://github.com/kestrel99/nlmixr2sse
+BugReports: https://github.com/kestrel99/nlmixr2sse/issues
+Imports:
+    checkmate,
+    cli (>= 3.4.0),
+    nlmixr2utils (>= 0.2)
+Suggests:
+    future,
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.3
