@@ -157,4 +157,8 @@ plotSSEPpePower(sse)
 plot(sse, type = "diagnostics")
 ```
 
+## Credit where it's due
 
+`nlmixr2sse` is based on the [PsN implementation](https://github.com/UUPharmacometrics/PsN/releases/download/v5.7.0/sse_userguide.pdf) written by Lars Lindbom, 
+Niclas Jonsson, Pontus Pihlgren, Mats Karlsson, Andrew Hooker, Kajsa Harling, 
+Rikard Nordgren and Svetlana Freiberga.
