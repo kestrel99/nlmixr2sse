@@ -1875,6 +1875,10 @@
   if (nrow(ofvSummary) == 0L) {
     return(data.frame(model_label = character(0), stringsAsFactors = FALSE))
   }
+  ofvSummary <- ofvSummary[!is.na(ofvSummary$statistic), , drop = FALSE]
+  if (nrow(ofvSummary) == 0L) {
+    return(data.frame(model_label = character(0), stringsAsFactors = FALSE))
+  }
 
   metric <- ifelse(
     is.na(ofvSummary$threshold),
@@ -1938,7 +1942,7 @@
       initialValues = initialValues,
       parameterSummary = parameterSummary,
       ofvSummary = ofvSummary,
-      powerSummary = ofvSummary[ofvSummary$direction == "power", , drop = FALSE]
+      powerSummary = ofvSummary[!is.na(ofvSummary$direction) & ofvSummary$direction == "power", , drop = FALSE]
     ),
     file.path(dir, paste0(basename, ".rds"))
   )

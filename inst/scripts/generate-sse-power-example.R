@@ -17,17 +17,17 @@ suppressPackageStartupMessages({
 
 full_model <- function() {
   ini({
-    tka <- log(1.2)
-    tcl <- log(4.5)
-    tv <- log(45)
-    tcl_wt <- 0.30
+    tka <- c(log(0.01), log(1.2), log(3))
+    tcl <- c(log(0.01), log(4.5), log(50))
+    tv <- c(log(0.01), log(45), log(500))
+    tcl_wt <- c(-3, 0.30, 3)
     eta.cl ~ 0.09
     eta.v ~ 0.09
     prop.sd <- 0.20
   })
   model({
     ka <- exp(tka)
-    cl <- exp(tcl + tcl_wt * WTGRP + eta.cl)
+    cl <- exp(tcl + tcl_wt * (WTGRP/70) + eta.cl)
     v <- exp(tv + eta.v)
     cp <- linCmt()
     cp ~ prop(prop.sd)
@@ -36,9 +36,9 @@ full_model <- function() {
 
 base_model <- function() {
   ini({
-    tka <- log(1.2)
-    tcl <- log(4.5)
-    tv <- log(45)
+    tka <- c(log(0.01), log(1.2), log(3))
+    tcl <- c(log(0.01), log(4.5), log(50))
+    tv <- c(log(0.01), log(45), log(500))
     eta.cl ~ 0.09
     eta.v ~ 0.09
     prop.sd <- 0.20

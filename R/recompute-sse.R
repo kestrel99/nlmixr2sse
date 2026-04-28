@@ -371,7 +371,7 @@
     initialValues = .wideToLongValues(initialWide),
     parameterSummary = parameter_summary,
     ofvSummary = ofv_summary,
-    powerSummary = ofv_summary[ofv_summary$direction == "power", , drop = FALSE]
+    powerSummary = ofv_summary[!is.na(ofv_summary$direction) & ofv_summary$direction == "power", , drop = FALSE]
   )
 }
 
