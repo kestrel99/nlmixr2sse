@@ -7,21 +7,35 @@ Authors@R: c(
   )
 Maintainer: Justin Wilkins <justin.wilkins@occams.com>
 Description: Stochastic simulation and estimation infrastructure for
-    nlmixr2 fits, including control objects, alternative-model
-    specifications, resumable run-directory setup, and shared-summary
-    scaffolding for future SSE workflows.
+    nlmixr2 fits, including fixed-parameter, raw-results-driven, and
+    covariance-driven stochastic simulation and estimation workflows,
+    canonical raw-results output, resumable run-directory setup, and
+    shared summary tables for parameter bias and OFV-based power
+    assessment.
 Depends:
     R (>= 4.0)
-License: GPL (>= 3)
+License: GPL (>= 3) + file LICENSE
 URL: https://github.com/kestrel99/nlmixr2sse
 BugReports: https://github.com/kestrel99/nlmixr2sse/issues
 Imports:
     checkmate,
     cli (>= 3.4.0),
-    nlmixr2utils (>= 0.2)
+    ggplot2,
+    lotri,
+    nlme,
+    nlmixr2est,
+    nlmixr2utils (>= 0.2),
+    rxode2,
+    tidyr
 Suggests:
     future,
+    knitr,
+    nlmixr2,
+    nlmixr2data,
+    patchwork,
+    rmarkdown,
     testthat (>= 3.0.0)
+VignetteBuilder: knitr
 Config/testthat/edition: 3
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)

@@ -2,7 +2,7 @@
 % Please edit documentation in R/run-sse.R
 \name{runSSE}
 \alias{runSSE}
-\title{Initialize an \code{nlmixr2} stochastic simulation and estimation run}
+\title{Run fixed-parameter stochastic simulation and estimation}
 \usage{
 runSSE(
   fit,
@@ -22,7 +22,7 @@ runSSE(
 \item{alternativeModels}{Optional \code{sseModel()} object or list of
 \code{sseModel()} objects.}
 
-\item{samples}{Integer number of SSE replicates to prepare.}
+\item{samples}{Integer number of SSE replicates to run.}
 
 \item{seed}{Optional master seed for the run.}
 
@@ -45,10 +45,16 @@ error.}
 An object of class \code{c("nlmixr2SSE", "list")}.
 }
 \description{
-\code{runSSE()} is the main entry point for \code{nlmixr2sse}. Phase 3 establishes the
-shared control flow: it validates the reference fit and alternative-model
-specifications, resolves the numbered run directory via
-\code{\link[nlmixr2utils:run-cache]{nlmixr2utils::resolveRunDir()}}, persists the run seed via
-\code{\link[nlmixr2utils:run-cache]{nlmixr2utils::withRunSeed()}}, and returns an initialized \code{nlmixr2SSE}
-object. The fixed-parameter simulation and refit core is added in Phase 4.
+\code{runSSE()} simulates \code{samples} datasets from a fitted \code{nlmixr2} reference
+model, optionally refits the simulation model itself, refits any alternative
+hypotheses supplied via \code{\link[=sseModel]{sseModel()}}, writes canonical SSE artifacts, and
+returns an \code{nlmixr2SSE} object containing raw results plus tidy parameter and
+OFV summaries.
+}
+\details{
+Phase 7 keeps the resumable run-state tracking, add-models support on
+completed SSE directories, and summary recomputation via
+\code{\link[=recomputeSSE]{recomputeSSE()}}, and adds simulated-data post-processing via
+\code{runSSEControl(simulationPostProcess = ...)} on top of the fixed,
+raw-results-driven, and covariance-based simulation modes.
 }

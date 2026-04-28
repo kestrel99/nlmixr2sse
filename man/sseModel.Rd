@@ -26,7 +26,7 @@ An object of class \code{nlmixr2SSEModel}.
 }
 \description{
 \code{sseModel()} stores the model metadata that \code{\link[=runSSE]{runSSE()}} will use when it
-refits alternative hypotheses against each simulated dataset. In Phase 3,
-the function resolves labels and estimation metadata so later phases can add
-the simulation core without changing the user-facing interface.
+refits alternative hypotheses against each simulated dataset. It resolves
+labels, estimation metadata, and fitted-versus-unfitted model inputs into a
+common internal representation for the SSE workflow.
 }

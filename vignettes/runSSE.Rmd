@@ -1,0 +1,272 @@
+title: "Running SSE with restart, plotting, and uncertainty-driven parameter sources"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Running SSE with restart, plotting, and uncertainty-driven parameter sources}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+can_run <- identical(Sys.getenv("RUN_NLMIXR2SSE_VIGNETTE"), "true")
+can_plot <- can_run &&
+  requireNamespace("tidyr", quietly = TRUE) &&
+  requireNamespace("ggplot2", quietly = TRUE)
+```
+
+`nlmixr2sse` implements a PsN-style stochastic simulation and estimation
+workflow for `nlmixr2`. Phase 6 covers three simulation modes plus resumable
+run directories and summary recomputation, and Phase 7 adds plotting helpers
+plus a simulated-data post-processing hook:
+
+- fixed point estimates from the reference fit
+- theta draws from `fit$cov`
+- canonical raw-results input, typically from a bootstrap or SIR run
+- rerunning the same output directory to resume or extend a completed study
+
+## Setup
+
+```{r setup, message = FALSE, warning = FALSE}
+library(nlmixr2)
+library(nlmixr2data)
+library(nlmixr2sse)
+
+set.seed(42)
+samples <- 5L
+```
+
+## Reference and alternative models
+
+```{r models}
+ref_model <- function() {
+  ini({
+    tka <- log(1.57)
+    tcl <- log(2.72)
+    tv <- log(31.5)
+    eta.ka ~ 0.6
+    add.sd <- 0.7
+  })
+  model({
+    ka <- exp(tka + eta.ka)
+    cl <- exp(tcl)
+    v <- exp(tv)
+    cp <- linCmt()
+    cp ~ add(add.sd)
+  })
+}
+
+alt_model <- function() {
+  ini({
+    tka <- log(1.57)
+    tcl <- log(2.72)
+    tv <- log(31.5)
+    add.sd <- 0.7
+  })
+  model({
+    ka <- exp(tka)
+    cl <- exp(tcl)
+    v <- exp(tv)
+    cp <- linCmt()
+    cp ~ add(add.sd)
+  })
+}
+```
+
+```{r fit-models, message = FALSE, warning = FALSE, eval = can_run}
+fit <- nlmixr2utils::nlmixr2(
+  ref_model,
+  nlmixr2data::theo_sd,
+  est = "focei",
+  control = list(print = 0L, covMethod = "r")
+)
+
+alt_fit <- nlmixr2utils::nlmixr2(
+  alt_model,
+  nlmixr2data::theo_sd,
+  est = "focei",
+  control = list(print = 0L, covMethod = "r")
+)
+```
+
+## Fixed-parameter SSE
+
+```{r run-sse, message = FALSE, warning = FALSE, eval = can_run}
+sse <- runSSE(
+  fit,
+  alternativeModels = sseModel(alt_fit, label = "no_eta"),
+  samples = samples,
+  seed = 42,
+  control = runSSEControl(workers = 1L)
+)
+```
+
+```{r summary, eval = can_run}
+summary(sse)
+head(sse$parameterSummary)
+head(sse$ofvSummary)
+```
+
+```{r tidy-wide, eval = can_plot}
+tidyr::pivot_wider(
+  sse$parameterSummary,
+  id_cols = c(model_label, role, parameter, matched),
+  names_from = statistic,
+  values_from = value
+)
+```
+
+```{r phase7-plots, eval = can_plot}
+plotSSEParameterBias(sse) +
+  ggplot2::theme(legend.position = "bottom")
+
+plotSSEOfvDistribution(sse)
+```
+
+## Power and Type I summaries
+
+`ofvSummary` reports `delta_OFV = reference - alternative`, so large positive
+values support the alternative and large negative values support the reference.
+The default thresholds are `0`, `3.84`, `5.99`, `7.81`, `9.49`, and `10.83`.
+`pct_delta_above` is the Type I direction; `pct_delta_below` is the power
+direction.
+
+## Restart, add models, and recompute
+
+`runSSE()` writes a numbered or explicit run directory with `run_info.rds`,
+`sse_state.rds`, `initial_estimates.csv`, canonical `raw_results.*`, and the
+summary artifacts. Calling `runSSE()` again on the same directory with
+`restart = FALSE` resumes incomplete work or reloads a completed run instead of
+refitting everything.
+
+```{r phase6-run-dir, eval = can_run}
+phase6_dir <- tempfile("nlmixr2sse-phase6-")
+
+sse_phase6 <- runSSE(
+  fit,
+  alternativeModels = sseModel(alt_fit, label = "no_eta"),
+  samples = samples,
+  seed = 300,
+  control = runSSEControl(workers = 1L),
+  outputDir = phase6_dir,
+  restart = TRUE
+)
+
+sse_resumed <- runSSE(
+  fit,
+  alternativeModels = sseModel(alt_fit, label = "no_eta"),
+  samples = samples,
+  seed = 999,
+  control = runSSEControl(workers = 1L),
+  outputDir = phase6_dir,
+  restart = FALSE
+)
+
+nrow(sse_resumed$rawResults)
+```
+
+If you later want to evaluate another alternative on the exact same simulated
+datasets, `addModels = TRUE` fits only the newly supplied labels. The example
+below reuses the same fitted alternative model with a new label just to
+demonstrate the workflow mechanics.
+
+```{r phase6-add-models, message = FALSE, warning = FALSE, eval = can_run}
+sse_added <- runSSE(
+  fit,
+  alternativeModels = sseModel(alt_fit, label = "no_eta_copy"),
+  samples = samples,
+  control = runSSEControl(addModels = TRUE, workers = 1L),
+  outputDir = phase6_dir,
+  restart = FALSE
+)
+
+sort(unique(sse_added$rawResults$model_label))
+```
+
+`recomputeSSE()` rebuilds `sse_results` and `sse_summary` outputs from the
+saved raw results and initial estimates without rerunning simulations or fits.
+Use this when you want a different `outFilter`, `refOfv`, or a subset of the
+completed replicates.
+
+```{r phase6-recompute, eval = can_run}
+sse_recomputed <- recomputeSSE(
+  phase6_dir,
+  outFilter = ~ minimization_successful == 1,
+  overwrite = FALSE
+)
+
+summary(sse_recomputed)
+```
+
+## Uncertainty modes
+
+`parameterSource = "covariance"` draws theta values from `fit$cov` for each
+replicate. In `nlmixr2`, that means theta-only uncertainty: OMEGA and SIGMA
+stay fixed at the fitted point estimates.
+
+```{r covariance-example, message = FALSE, warning = FALSE, eval = can_run}
+sse_cov <- runSSE(
+  fit,
+  alternativeModels = sseModel(alt_fit, label = "no_eta"),
+  samples = samples,
+  seed = 100,
+  control = runSSEControl(
+    parameterSource = "covariance",
+    workers = 1L
+  )
+)
+```
+
+For full uncertainty in OMEGA and SIGMA as well, use
+`parameterSource = "rawres"` with a canonical raw-results file. The package
+ships a tiny bootstrap-style fixture so you can see the cross-package interface
+without running a bootstrap first.
+
+```{r rawres-path}
+bootstrap_rawres <- system.file(
+  "extdata",
+  "bootstrap_raw_results.csv",
+  package = "nlmixr2sse"
+)
+bootstrap_rawres
+```
+
+```{r rawres-example, message = FALSE, warning = FALSE, eval = can_run}
+sse_rawres <- runSSE(
+  fit,
+  alternativeModels = sseModel(alt_fit, label = "no_eta"),
+  samples = 2L,
+  seed = 200,
+  control = runSSEControl(
+    parameterSource = "rawres",
+    rawresInput = bootstrap_rawres,
+    inFilter = ~ minimization_successful == 1,
+    workers = 1L
+  )
+)
+```
+
+## Simulation post-processing
+
+Use `simulationPostProcess` when the raw simulated output needs a final R-side
+adjustment before refitting. The hook receives the merged estimation data plus
+context like `sample`, `paramSet`, `solved`, and `referenceData`, and it must
+return a data frame.
+
+```{r phase7-postprocess, eval = can_run}
+sse_post <- runSSE(
+  fit,
+  alternativeModels = sseModel(alt_fit, label = "no_eta"),
+  samples = 2L,
+  seed = 250,
+  control = runSSEControl(
+    workers = 1L,
+    simulationPostProcess = function(data, sample) {
+      data$SIM_REPLICATE <- sample
+      data
+    }
+  )
+)
+```
+
+Set `RUN_NLMIXR2SSE_VIGNETTE=true` before rendering if you want the fit and
+`runSSE()` chunks to execute during vignette build.

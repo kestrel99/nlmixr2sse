@@ -34,6 +34,7 @@ re-estimated on each simulated dataset?}
 canonical raw-results input, or multivariate-normal covariance draws.}
 
 \item{rawresInput}{Optional raw-results input path or object for
+\code{parameterSource = "rawres"}. This is required when
 \code{parameterSource = "rawres"}.}
 
 \item{offsetRawres}{Integer sample offset for raw-results input.}
@@ -41,22 +42,32 @@ canonical raw-results input, or multivariate-normal covariance draws.}
 \item{inFilter, outFilter}{Optional raw-results filters. These accept the same
 forms as \code{\link[nlmixr2utils:raw-results]{nlmixr2utils::setupRawResultsFilter()}}.}
 
-\item{randomEstimationInits}{Logical. Reserved for raw-results-driven runs.}
+\item{randomEstimationInits}{Logical. When \code{TRUE}, raw-results-driven SSE
+also uses each selected raw-results row as the starting point for the
+estimation step.}
 
-\item{updateFix}{Logical. Reserved for raw-results-driven runs.}
+\item{updateFix}{Logical. When \code{TRUE}, raw-results-driven SSE updates fixed
+model values from the selected raw-results row before refitting.}
 
 \item{appendColumns}{Optional character vector of simulated-data columns to
 append to SSE outputs.}
 
-\item{simulationPostProcess}{Reserved for Phase 7. Must be \code{NULL} in Phase 3.}
+\item{simulationPostProcess}{Optional function applied to each simulated
+estimation data set after simulated observations have been merged back
+onto the original design data. The function must return a data frame. It
+may declare any subset of the named arguments \code{data}, \code{sample},
+\code{paramSet}, \code{solved}, \code{referenceData}, and \code{outputDir}.}
 
-\item{initialEtas}{Reserved for Phase 7. Must be \code{FALSE} in Phase 3.}
+\item{initialEtas}{Reserved for later work. Must remain \code{FALSE} in the
+current release.}
 
 \item{workers}{Worker setting passed through to shared worker helpers.}
 
-\item{addModels}{Logical. Add alternative models onto a prior run.}
+\item{addModels}{Logical. Extend a completed run by fitting only new
+alternative models on the saved simulated datasets.}
 
-\item{saveFits, saveDatasets}{Logical retention flags for later SSE phases.}
+\item{saveFits, saveDatasets}{Logical retention flags used by restart and
+add-models workflows.}
 
 \item{overwrite}{Logical. Reserved output-overwrite flag for later phases.}
 }
@@ -65,7 +76,9 @@ An object of class \code{nlmixr2SSEControl}.
 }
 \description{
 \code{runSSEControl()} constructs and validates the control object used by
-\code{\link[=runSSE]{runSSE()}}. Phase 3 implements the argument surface, combination checks, and
-staged-availability guards so later phases can add the simulation core
-without changing the external API.
+\code{\link[=runSSE]{runSSE()}}. Phase 7 keeps the Phase 6 uncertainty-mode controls,
+resumable add-models workflow, raw-results filtering, and
+estimation-initialization switches, and now also exposes simulation
+post-processing hooks while still holding \code{initialEtas} back pending
+stability work.
 }

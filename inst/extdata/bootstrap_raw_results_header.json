@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "columns": [
+    "source",
+    "hypothesis",
+    "sample",
+    "model_label",
+    "role",
+    "minimization_successful",
+    "covariance_step_successful",
+    "estimate_near_boundary",
+    "significant_digits",
+    "condition_number",
+    "objf",
+    "error_message",
+    "tka",
+    "tcl",
+    "tv",
+    "add.sd",
+    "omega(eta.ka,eta.ka)",
+    "tka.se",
+    "tcl.se",
+    "tv.se",
+    "add.sd.se",
+    "omega(eta.ka,eta.ka).se"
+  ],
+  "base_cols": [
+    "source",
+    "hypothesis",
+    "sample",
+    "model_label",
+    "role",
+    "minimization_successful",
+    "covariance_step_successful",
+    "estimate_near_boundary",
+    "significant_digits",
+    "condition_number",
+    "objf",
+    "error_message"
+  ],
+  "theta_cols": [
+    "tka",
+    "tcl",
+    "tv",
+    "add.sd"
+  ],
+  "omega_cols": [
+    "omega(eta.ka,eta.ka)"
+  ],
+  "sigma_cols": [],
+  "se_cols": [
+    "tka.se",
+    "tcl.se",
+    "tv.se",
+    "add.sd.se",
+    "omega(eta.ka,eta.ka).se"
+  ],
+  "block_ranges": {
+    "base": [
+      1,
+      12
+    ],
+    "theta": [
+      13,
+      16
+    ],
+    "omega": [
+      17,
+      17
+    ],
+    "sigma": null,
+    "se": [
+      18,
+      22
+    ]
+  },
+  "parameter_cols": [
+    "tka",
+    "tcl",
+    "tv",
+    "add.sd",
+    "omega(eta.ka,eta.ka)"
+  ]
+}

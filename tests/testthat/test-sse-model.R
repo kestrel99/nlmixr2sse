@@ -25,11 +25,8 @@ test_that("sseModel requires est and control for unfitted models", {
 })
 
 test_that("sseModel validates labels", {
-  mod <- function() NULL
   spec <- sseModel(
-    mod,
-    est = "focei",
-    control = list(print = 0L),
+    fake_sse_fit(),
     label = "altA"
   )
 
@@ -37,9 +34,7 @@ test_that("sseModel validates labels", {
 
   err <- capture_sse_error(
     sseModel(
-      mod,
-      est = "focei",
-      control = list(print = 0L),
+      fake_sse_fit(),
       label = "bad label"
     )
   )

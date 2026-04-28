@@ -1,0 +1,215 @@
+---
+title: "How many subjects do I need to detect a covariate effect?"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{How many subjects do I need to detect a covariate effect?}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+example_path <- system.file(
+  "extdata",
+  "sse_power_example.rds",
+  package = "nlmixr2sse"
+)
+if (!nzchar(example_path)) {
+  example_path <- normalizePath(
+    file.path("..", "inst", "extdata", "sse_power_example.rds"),
+    mustWork = TRUE
+  )
+}
+example_data <- readRDS(example_path)
+can_regenerate <- identical(Sys.getenv("RUN_NLMIXR2SSE_VIGNETTE"), "true")
+```
+
+Power calculations for covariate effects in nonlinear mixed-effects models are
+usually not available in closed form. A practical alternative is stochastic
+simulation and estimation (SSE): simulate data under a known truth, fit the
+models you would compare in practice, and record how often the effect is
+detected.
+
+This vignette shows that workflow for a deliberately small example. The default
+build path uses a precomputed result object shipped with the package, so the
+article stays lightweight while still showing the full analysis pattern.
+
+## Scientific Scenario
+
+Suppose a single-dose oral PK study compares two weight groups in healthy
+volunteers. We assume the true population has a weight effect on clearance and
+ask a simple design question:
+
+> How many subjects do we need to detect that clearance is higher in the
+> high-weight group?
+
+To keep the mechanics front and center, the example uses:
+
+- a one-compartment model with first-order absorption;
+- a binary covariate on clearance;
+- a small grid of study sizes;
+- likelihood-ratio testing between nested models.
+
+## Data-Generating and Analysis Models
+
+The data-generating model includes a positive covariate effect on `log(CL)`.
+For each simulated data set, we fit:
+
+- a base model without the weight effect; and
+- a full model with the weight effect on clearance.
+
+In a live study, that setup could look like this:
+
+```{r model-code, eval = FALSE}
+library(nlmixr2)
+library(nlmixr2sse)
+
+true_model <- function() {
+  ini({
+    tka <- log(1.2)
+    tcl <- log(4.5)
+    tv <- log(45)
+    tcl_wt <- 0.30
+    eta.cl ~ 0.09
+    eta.v ~ 0.09
+    prop.sd <- 0.20
+  })
+  model({
+    wt_high <- WTGRP
+    ka <- exp(tka)
+    cl <- exp(tcl + tcl_wt * wt_high + eta.cl)
+    v <- exp(tv + eta.v)
+    cp <- linCmt()
+    cp ~ prop(prop.sd)
+  })
+}
+```
+
+The shipped vignette does not rerun those fits by default. Instead, it loads a
+small precomputed artifact that stores the resulting power summary and a set of
+replicate-level covariate estimates for one study size.
+
+```{r artifact-summary}
+str(example_data, max.level = 1)
+```
+
+## The SSE Loop
+
+For each study size in the grid, the conceptual loop is:
+
+1. Simulate many replicate data sets under the true model.
+2. Fit the base model and full model to each replicate.
+3. Compute `delta OFV = OFV_base - OFV_full`.
+4. Mark the covariate as detected when the likelihood-ratio test crosses the
+   chosen threshold.
+5. Tally convergence and summarize the covariate estimates.
+
+The default vignette artifact uses the following study-size grid:
+
+```{r study-grid}
+example_data$study_sizes
+```
+
+Maintainers can regenerate the shipped object by setting
+`RUN_NLMIXR2SSE_VIGNETTE=true` and replacing the saved artifact with a refreshed
+small example run.
+
+```{r regenerate-note, eval = FALSE}
+if (can_regenerate) {
+  # Run a small maintainer-only SSE workflow here and save a refreshed
+  # inst/extdata/sse_power_example.rds artifact.
+}
+```
+
+## Empirical Power Across Study Sizes
+
+The precomputed power summary shows the typical pattern: power rises as the
+study includes more subjects.
+
+```{r power-table}
+power_summary <- example_data$power_curve
+power_summary
+```
+
+```{r fig-power, fig.width = 6, fig.height = 4}
+library(ggplot2)
+
+ggplot(
+  power_summary,
+  aes(x = study_size, y = 100 * power)
+) +
+  geom_line(linewidth = 0.9, colour = "#2f5c85") +
+  geom_point(size = 2.2, colour = "#2f5c85") +
+  geom_hline(yintercept = 80, linetype = 2, colour = "#b24a2a") +
+  scale_x_continuous(breaks = power_summary$study_size) +
+  scale_y_continuous(limits = c(0, 100)) +
+  labs(
+    x = "Subjects",
+    y = "Empirical power (%)",
+    title = "Power increases with study size"
+  ) +
+  theme_minimal()
+```
+
+The dashed line marks the common 80% benchmark. In this example, the power
+curve suggests that the design starts to approach that threshold around
+`r example_data$n_for_effect_plot` subjects.
+
+## Parameter Recovery at One Study Size
+
+Power only tells us how often the effect is detected. It does not guarantee the
+effect is estimated precisely. The replicate-level estimates below show the
+distribution of fitted covariate effects at
+`r example_data$n_for_effect_plot` subjects.
+
+```{r fig-effect, fig.width = 6, fig.height = 4}
+effect_plot_data <- example_data$effect_plot_data
+
+ggplot(
+  effect_plot_data,
+  aes(x = factor(study_size), y = estimate)
+) +
+  geom_boxplot(fill = "#b7d1df", colour = "#2f5c85", width = 0.5) +
+  geom_jitter(
+    aes(colour = significant),
+    width = 0.08,
+    height = 0,
+    size = 2,
+    alpha = 0.8
+  ) +
+  geom_hline(yintercept = example_data$true_effect, linetype = 2, colour = "#1b7f3b") +
+  geom_hline(yintercept = 0, linetype = 3, colour = "#8a3b12") +
+  labs(
+    x = "Subjects",
+    y = "Estimated covariate effect on log(CL)",
+    colour = "LRT significant",
+    title = "Detection and precision are related but not identical"
+  ) +
+  theme_minimal()
+```
+
+The green dashed line is the true effect used to generate the data, and the
+dotted brown line marks zero. Some replicates detect the effect cleanly, while
+others remain close to zero or underestimate the magnitude. That is a useful
+reminder that a design can be adequately powered for detection before it is
+strong for precise estimation.
+
+## Reporting Guidance
+
+When you use SSE for design work, report more than a single power number:
+
+- the assumed true effect size;
+- the study-size grid;
+- the number of converged replicates;
+- the likelihood-ratio threshold used for significance;
+- the distribution of fitted covariate effects, not just the pass rate.
+
+This is especially important when convergence problems become non-negligible, or
+when Monte Carlo error is large because the number of replicates is small.
+
+## Where To Go Next
+
+Use this vignette as the conceptual starting point, then see
+`vignette("runSSE", package = "nlmixr2sse")` for the package's broader
+workflow support around restartable runs, alternate parameter sources, and
+plotting helpers.

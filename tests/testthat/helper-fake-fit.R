@@ -3,8 +3,13 @@
 }
 
 fake_sse_fit <- function() {
+  dummy_ui <- structure(
+    list(iniDf = data.frame(stringsAsFactors = FALSE)),
+    class = "rxUi"
+  )
   fit <- list(
-    finalUiEnv = function() NULL,
+    finalUiEnv = dummy_ui,
+    ui = dummy_ui,
     est = "focei",
     control = list(print = 0L),
     theta = c(tka = 0.45, tcl = 1),
@@ -42,6 +47,223 @@ fake_sse_fit <- function() {
   )
   class(fit) <- c("nlmixr2SSEFakeFit", "nlmixr2FitCore")
   fit
+}
+
+fake_sse_fit_specs <- function(fit_label = "fake_sse_fit", alt_label = "alt1") {
+  list(
+    list(
+      label = fit_label,
+      role = "simulation",
+      hypothesis = "simulation",
+      est = "focei",
+      schema = list(
+        thetaCols = c("tka", "tcl"),
+        omegaCols = "omega(eta.ka,eta.ka)",
+        sigmaCols = character(0)
+      )
+    ),
+    list(
+      label = alt_label,
+      role = "alternative",
+      hypothesis = "alternative_1",
+      est = "focei",
+      schema = list(
+        thetaCols = c("tka", "tcl"),
+        omegaCols = character(0),
+        sigmaCols = character(0)
+      )
+    )
+  )
+}
+
+fake_sse_initial_estimates <- function(samples = 2L) {
+  data.frame(
+    sample = seq_len(samples),
+    tka = c(0.50, 0.70)[seq_len(samples)],
+    tcl = c(1.00, 1.20)[seq_len(samples)],
+    "omega(eta.ka,eta.ka)" = c(0.30, 0.32)[seq_len(samples)],
+    check.names = FALSE,
+    stringsAsFactors = FALSE
+  )
+}
+
+fake_sse_raw_results <- function(
+  fit = unclass(fake_sse_fit()),
+  fit_label = "fake_sse_fit",
+  alt_label = "alt1"
+) {
+  do.call(
+    rbind,
+    list(
+      nlmixr2utils::rawResultsRow(
+        fit,
+        source = "sse",
+        hypothesis = "simulation",
+        sample = 1L,
+        modelLabel = fit_label,
+        role = "simulation",
+        theta = c(tka = 0.55, tcl = 1.05),
+        omega = c("omega(eta.ka,eta.ka)" = 0.31),
+        objf = 100
+      ),
+      nlmixr2utils::rawResultsRow(
+        fit,
+        source = "sse",
+        hypothesis = "alternative_1",
+        sample = 1L,
+        modelLabel = alt_label,
+        role = "alternative",
+        theta = c(tka = 0.52, tcl = 1.04),
+        objf = 103
+      ),
+      nlmixr2utils::rawResultsRow(
+        fit,
+        source = "sse",
+        hypothesis = "simulation",
+        sample = 2L,
+        modelLabel = fit_label,
+        role = "simulation",
+        theta = c(tka = 0.72, tcl = 1.18),
+        omega = c("omega(eta.ka,eta.ka)" = 0.33),
+        objf = 101
+      ),
+      nlmixr2utils::rawResultsRow(
+        fit,
+        source = "sse",
+        hypothesis = "alternative_1",
+        sample = 2L,
+        modelLabel = alt_label,
+        role = "alternative",
+        theta = c(tka = 0.68, tcl = 1.16),
+        objf = 105
+      )
+    )
+  )
+}
+
+write_fake_sse_run_dir <- function(
+  dir,
+  fit_label = "fake_sse_fit",
+  alt_label = "alt1",
+  completed = TRUE
+) {
+  fit <- unclass(fake_sse_fit())
+  raw_results <- fake_sse_raw_results(
+    fit = fit,
+    fit_label = fit_label,
+    alt_label = alt_label
+  )
+  initial_wide <- fake_sse_initial_estimates()
+
+  dir.create(dir, recursive = TRUE, showWarnings = FALSE)
+  dir.create(file.path(dir, "simulations"), showWarnings = FALSE)
+  dir.create(file.path(dir, "fits"), showWarnings = FALSE)
+  nlmixr2utils::writeRawResults(raw_results, dir)
+  utils::write.csv(
+    initial_wide,
+    file.path(dir, "initial_estimates.csv"),
+    row.names = FALSE,
+    na = "NA"
+  )
+  saveRDS(
+    list(
+      runInfo = list(status = if (completed) "completed" else "running"),
+      referenceValues = .wideToReferenceValues(initial_wide),
+      initialValues = .wideToLongValues(initial_wide),
+      parameterSummary = .emptyParameterSummary(),
+      ofvSummary = .emptyOfvSummary(),
+      powerSummary = .emptyOfvSummary()
+    ),
+    file.path(dir, "sse_summary.rds")
+  )
+  saveRDS(
+    list(
+      status = if (completed) "completed" else "running",
+      fitName = fit_label,
+      samples = 2L,
+      seed = 123L,
+      parameterSource = "fixed",
+      estimateSimulation = TRUE,
+      studySampleSize = 12L,
+      studySampleUnit = "subjects",
+      studyIdColumn = "ID",
+      studyObservationCount = 24L,
+      projectedTotalFits = 4L,
+      alternativeLabels = alt_label,
+      modelLabels = c(fit_label, alt_label),
+      fitSpecs = fake_sse_fit_specs(fit_label, alt_label),
+      alternativeSpecs = list(list(
+        label = alt_label,
+        est = "focei",
+        control = list(print = 0L),
+        isFit = TRUE,
+        hasDataOverride = FALSE
+      )),
+      control = runSSEControl(workers = 1L),
+      schemaVersion = 1L,
+      startedAt = Sys.time(),
+      completedAt = if (completed) Sys.time() else NULL
+    ),
+    file.path(dir, "run_info.rds")
+  )
+}
+
+fake_sse_object <- function(
+  fit_label = "fake_sse_fit",
+  alt_label = "alt1"
+) {
+  initial_wide <- fake_sse_initial_estimates()
+  raw_results <- fake_sse_raw_results(
+    fit = unclass(fake_sse_fit()),
+    fit_label = fit_label,
+    alt_label = alt_label
+  )
+  outputs <- .computeSSEOutputs(
+    rawResults = raw_results,
+    initialWide = initial_wide,
+    fitSpecsSnapshot = fake_sse_fit_specs(fit_label, alt_label),
+    runInfo = list(
+      fitName = fit_label,
+      samples = 2L,
+      parameterSource = "fixed",
+      estimateSimulation = TRUE,
+      studySampleSize = 12L,
+      studySampleUnit = "subjects",
+      studyIdColumn = "ID",
+      studyObservationCount = 24L,
+      fitSpecs = fake_sse_fit_specs(fit_label, alt_label),
+      control = runSSEControl(workers = 1L)
+    )
+  )
+  .newNlmixr2SSE(
+    runInfo = list(
+      fitName = fit_label,
+      samples = 2L,
+      parameterSource = "fixed",
+      estimateSimulation = TRUE,
+      studySampleSize = 12L,
+      studySampleUnit = "subjects",
+      studyIdColumn = "ID",
+      studyObservationCount = 24L,
+      fitSpecs = fake_sse_fit_specs(fit_label, alt_label),
+      control = runSSEControl(workers = 1L)
+    ),
+    rawResults = raw_results,
+    alternativeSpecs = list(list(
+      label = alt_label,
+      est = "focei",
+      control = list(print = 0L),
+      isFit = TRUE,
+      hasDataOverride = FALSE
+    )),
+    outputDir = tempdir(),
+    timestamp = Sys.time(),
+    referenceValues = outputs$referenceValues,
+    initialValues = outputs$initialValues,
+    parameterSummary = outputs$parameterSummary,
+    ofvSummary = outputs$ofvSummary,
+    powerSummary = outputs$powerSummary
+  )
 }
 
 capture_sse_error <- function(expr) {

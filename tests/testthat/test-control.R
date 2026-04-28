@@ -48,15 +48,13 @@ test_that("runSSEControl enforces staged-availability and combination rules", {
   expect_s3_class(err_append, "error")
   expect_match(conditionMessage(err_append), "appendColumns")
 
-  err_post <- capture_sse_error(
-    runSSEControl(simulationPostProcess = identity)
-  )
-  expect_s3_class(err_post, "error")
-  expect_match(conditionMessage(err_post), "Phase 7")
+  ctl <- runSSEControl(simulationPostProcess = identity)
+  expect_s3_class(ctl, "nlmixr2SSEControl")
+  expect_identical(ctl$simulationPostProcess, identity)
 
   err_eta <- capture_sse_error(runSSEControl(initialEtas = TRUE))
   expect_s3_class(err_eta, "error")
-  expect_match(conditionMessage(err_eta), "Phase 7")
+  expect_match(conditionMessage(err_eta), "reserved")
 })
 
 test_that("runSSEControl validates raw-results filters", {

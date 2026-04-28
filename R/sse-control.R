@@ -1,9 +1,10 @@
 #' Configure an `nlmixr2sse` run
 #'
 #' `runSSEControl()` constructs and validates the control object used by
-#' [runSSE()]. Phase 3 implements the argument surface, combination checks, and
-#' staged-availability guards so later phases can add the simulation core
-#' without changing the external API.
+#' [runSSE()]. Phase 7 keeps the Phase 6 uncertainty-mode controls, resumable
+#' add-models workflow, raw-results filtering, and estimation-initialization
+#' switches, and now also exposes simulation post-processing hooks while still
+#' holding `initialEtas` back pending stability work.
 #'
 #' @param estimateSimulation Logical. Should the simulation model also be
 #'   re-estimated on each simulated dataset?
@@ -11,19 +12,30 @@
 #' @param parameterSource Source of simulation parameters: fixed fit values,
 #'   canonical raw-results input, or multivariate-normal covariance draws.
 #' @param rawresInput Optional raw-results input path or object for
+#'   `parameterSource = "rawres"`. This is required when
 #'   `parameterSource = "rawres"`.
 #' @param offsetRawres Integer sample offset for raw-results input.
 #' @param inFilter,outFilter Optional raw-results filters. These accept the same
 #'   forms as [nlmixr2utils::setupRawResultsFilter()].
-#' @param randomEstimationInits Logical. Reserved for raw-results-driven runs.
-#' @param updateFix Logical. Reserved for raw-results-driven runs.
+#' @param randomEstimationInits Logical. When `TRUE`, raw-results-driven SSE
+#'   also uses each selected raw-results row as the starting point for the
+#'   estimation step.
+#' @param updateFix Logical. When `TRUE`, raw-results-driven SSE updates fixed
+#'   model values from the selected raw-results row before refitting.
 #' @param appendColumns Optional character vector of simulated-data columns to
 #'   append to SSE outputs.
-#' @param simulationPostProcess Reserved for Phase 7. Must be `NULL` in Phase 3.
-#' @param initialEtas Reserved for Phase 7. Must be `FALSE` in Phase 3.
+#' @param simulationPostProcess Optional function applied to each simulated
+#'   estimation data set after simulated observations have been merged back
+#'   onto the original design data. The function must return a data frame. It
+#'   may declare any subset of the named arguments `data`, `sample`,
+#'   `paramSet`, `solved`, `referenceData`, and `outputDir`.
+#' @param initialEtas Reserved for later work. Must remain `FALSE` in the
+#'   current release.
 #' @param workers Worker setting passed through to shared worker helpers.
-#' @param addModels Logical. Add alternative models onto a prior run.
-#' @param saveFits,saveDatasets Logical retention flags for later SSE phases.
+#' @param addModels Logical. Extend a completed run by fitting only new
+#'   alternative models on the saved simulated datasets.
+#' @param saveFits,saveDatasets Logical retention flags used by restart and
+#'   add-models workflows.
 #' @param overwrite Logical. Reserved output-overwrite flag for later phases.
 #'
 #' @return An object of class `nlmixr2SSEControl`.
@@ -68,6 +80,9 @@ runSSEControl <- function(
       unique = TRUE
     )
   }
+  if (!is.null(simulationPostProcess)) {
+    checkmate::assertFunction(simulationPostProcess)
+  }
   checkmate::assertFlag(initialEtas)
   checkmate::assertFlag(addModels)
   checkmate::assertFlag(saveFits)
@@ -107,14 +122,9 @@ runSSEControl <- function(
       "{.arg appendColumns} cannot be used together with {.arg addModels}."
     )
   }
-  if (!is.null(simulationPostProcess)) {
-    .abortSSE(
-      "{.arg simulationPostProcess} is reserved for Phase 7 and must be NULL in the current release."
-    )
-  }
   if (isTRUE(initialEtas)) {
     .abortSSE(
-      "{.arg initialEtas} is reserved for Phase 7 and must remain FALSE in the current release."
+      "{.arg initialEtas} is still reserved and must remain FALSE in the current release."
     )
   }
 
