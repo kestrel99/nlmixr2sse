@@ -67,3 +67,37 @@ test_that("runSSEControl validates raw-results filters", {
   expect_s3_class(ctl, "nlmixr2SSEControl")
   expect_equal(ctl$parameterSource, "rawres")
 })
+
+test_that("runSSEControl exposes rxThreads with an auto default", {
+  ctl <- runSSEControl()
+  expect_equal(ctl$rxThreads, "auto")
+
+  expect_equal(runSSEControl(rxThreads = 1L)$rxThreads, 1L)
+  expect_equal(runSSEControl(rxThreads = 8L)$rxThreads, 8L)
+  expect_null(runSSEControl(rxThreads = NULL)$rxThreads)
+})
+
+test_that("runSSEControl rejects invalid rxThreads", {
+  for (bad in list(0L, -1L, 2.5, "many", c(1L, 2L), NA_integer_)) {
+    label <- paste("rxThreads =", paste(deparse(bad), collapse = " "))
+    err <- capture_sse_error(runSSEControl(rxThreads = bad))
+    expect_s3_class(err, "error")
+    expect_match(conditionMessage(err), "rxThreads", info = label)
+  }
+})
+
+test_that("workerDescription reports the resolved rxode2 thread count", {
+  expect_match(
+    nlmixr2sse:::.workerDescription(1L, rxThreads = 8L),
+    "sequential \\(workers = 1\\), 8 rxode2 thread"
+  )
+  expect_match(
+    nlmixr2sse:::.workerDescription(4L, rxThreads = 2L),
+    "parallel \\(4 workers\\), 2 rxode2 thread"
+  )
+  # omitted thread count keeps the bare description
+  expect_equal(
+    nlmixr2sse:::.workerDescription(1L),
+    "sequential (workers = 1)"
+  )
+})

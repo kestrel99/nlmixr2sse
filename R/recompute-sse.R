@@ -111,7 +111,8 @@
   fitName,
   samples,
   control,
-  requestedLabels
+  requestedLabels,
+  rxThreads = NULL
 ) {
   if (is.null(existingRunInfo)) {
     return(invisible(NULL))
@@ -141,6 +142,25 @@
     .abortSSE(
       "Existing run directory was created with a different {.arg estimateSimulation} setting."
     )
+  }
+
+  if (!is.null(rxThreads)) {
+    recorded <- existingRunInfo$rxThreads
+    if (is.null(recorded)) {
+      cli::cli_warn(c(
+        "!" = "This run directory predates {.arg rxThreads} tracking, so the thread count it used is unknown.",
+        "i" = "rxode2 thread count changes simulated values, so resumed replicates may not be comparable to the existing ones."
+      ))
+    } else if (!identical(as.integer(recorded), as.integer(rxThreads))) {
+      .abortSSE(
+        paste0(
+          "Existing run directory used {.arg rxThreads = {as.integer(recorded)}}, ",
+          "but this run resolves to {.arg rxThreads = {as.integer(rxThreads)}}. ",
+          "rxode2 thread count changes simulated values, so the replicates would not be comparable. ",
+          "Use {.code runSSEControl(rxThreads = {as.integer(recorded)})} to resume, or {.code restart = TRUE} for a fresh run."
+        )
+      )
+    }
   }
 
   existing_labels <- .existingModelLabels(existingRunInfo)

@@ -554,14 +554,14 @@ test_that("runSSE resumes cached partial runs without duplicating rows", {
     .package = "nlmixr2sse"
   )
 
-  res <- runSSE(
+  res <- suppressWarnings(runSSE(
     fake_sse_fit(),
     alternativeModels = sseModel(fake_sse_fit(), label = "alt1"),
     samples = 2L,
     control = runSSEControl(workers = 1L),
     outputDir = tmp,
     restart = FALSE
-  )
+  ))
 
   expect_s3_class(res, "nlmixr2SSE")
   expect_equal(nrow(res$rawResults), 4L)
@@ -886,4 +886,152 @@ test_that("runSSE supports raw-results and covariance parameter sources end to e
   ]
   expect_gte(length(unique(signif(cov_tka, 8))), 2L)
   expect_equal(length(unique(signif(cov_omega, 8))), 1L)
+})
+
+test_that("validateResumeRequest aborts on an rxThreads mismatch", {
+  run_info <- list(
+    fitName = "fake_sse_fit",
+    samples = 2L,
+    parameterSource = "fixed",
+    estimateSimulation = TRUE,
+    rxThreads = 8L
+  )
+
+  err <- capture_sse_error(
+    .validateResumeRequest(
+      existingRunInfo = run_info,
+      fitName = "fake_sse_fit",
+      samples = 2L,
+      control = runSSEControl(workers = 1L),
+      requestedLabels = character(0),
+      rxThreads = 2L
+    )
+  )
+
+  expect_s3_class(err, "error")
+  expect_match(conditionMessage(err), "rxThreads")
+  expect_match(conditionMessage(err), "8")
+  expect_match(conditionMessage(err), "2")
+})
+
+test_that("validateResumeRequest warns when rxThreads was never recorded", {
+  run_info <- list(
+    fitName = "fake_sse_fit",
+    samples = 2L,
+    parameterSource = "fixed",
+    estimateSimulation = TRUE
+  )
+
+  expect_warning(
+    .validateResumeRequest(
+      existingRunInfo = run_info,
+      fitName = "fake_sse_fit",
+      samples = 2L,
+      control = runSSEControl(workers = 1L),
+      requestedLabels = character(0),
+      rxThreads = 4L
+    ),
+    "rxThreads"
+  )
+})
+
+test_that("validateResumeRequest accepts a matching rxThreads", {
+  run_info <- list(
+    fitName = "fake_sse_fit",
+    samples = 2L,
+    parameterSource = "fixed",
+    estimateSimulation = TRUE,
+    rxThreads = 4L
+  )
+
+  expect_silent(
+    .validateResumeRequest(
+      existingRunInfo = run_info,
+      fitName = "fake_sse_fit",
+      samples = 2L,
+      control = runSSEControl(workers = 1L),
+      requestedLabels = character(0),
+      rxThreads = 4L
+    )
+  )
+})
+
+test_that("addModels warns when rxThreads differs from the recorded run", {
+  tmp <- tempfile("nlmixr2sse-addmodels-rxthreads-")
+  on.exit(unlink(tmp, recursive = TRUE, force = TRUE), add = TRUE)
+  write_fake_sse_run_dir(tmp)
+
+  run_info <- readRDS(file.path(tmp, "run_info.rds"))
+  run_info$rxThreads <- 8L
+  saveRDS(run_info, file.path(tmp, "run_info.rds"))
+
+  saveRDS(
+    data.frame(ID = 1, DV = 10, stringsAsFactors = FALSE),
+    file.path(tmp, "simulations", "sim_0001.rds")
+  )
+  saveRDS(
+    data.frame(ID = 2, DV = 20, stringsAsFactors = FALSE),
+    file.path(tmp, "simulations", "sim_0002.rds")
+  )
+  nlmixr2utils::withRunSeed(tmp, seed = 42, prefix = "sse")
+
+  testthat::local_mocked_bindings(
+    .fitTaskRecord = function(sample, spec, simRecord, unionSchema, ...) {
+      list(
+        success = TRUE,
+        row = nlmixr2utils::rawResultsRow(
+          fit = NULL,
+          source = "sse",
+          hypothesis = spec$hypothesis,
+          sample = sample,
+          modelLabel = spec$label,
+          role = spec$role,
+          objf = 150 + sample,
+          schema = unionSchema
+        ),
+        sample = as.integer(sample),
+        model_label = spec$label,
+        role = spec$role,
+        hypothesis = spec$hypothesis
+      )
+    },
+    .package = "nlmixr2sse"
+  )
+
+  expect_warning(
+    try(
+      runSSE(
+        fake_sse_fit(),
+        alternativeModels = sseModel(fake_sse_fit(), label = "alt_rxt"),
+        samples = 2L,
+        control = runSSEControl(addModels = TRUE, workers = 1L, rxThreads = 2L),
+        outputDir = tmp,
+        restart = FALSE
+      ),
+      silent = TRUE
+    ),
+    "rxThreads"
+  )
+})
+
+test_that("addModels preserves the originally recorded rxThreads", {
+  existing <- list(
+    rxThreads = 8L,
+    parameterSource = "fixed",
+    estimateSimulation = TRUE
+  )
+  expect_equal(
+    .addModelsRxThreads(existing, resolvedRxThreads = 2L, addModels = TRUE),
+    8L
+  )
+  # a fresh (non-addModels) run records what it actually resolved
+  expect_equal(
+    .addModelsRxThreads(existing, resolvedRxThreads = 2L, addModels = FALSE),
+    2L
+  )
+  # an addModels run against a directory with no recorded value falls back
+  expect_equal(
+    .addModelsRxThreads(list(), resolvedRxThreads = 2L, addModels = TRUE),
+    2L
+  )
 })

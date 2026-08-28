@@ -150,7 +150,15 @@ runSSE <- function(
   }
 
   sim_schema <- .rawResultsSchemaForFit(fit)
-  worker_desc <- .workerDescription(control$workers)
+  # Resolve rxThreads exactly once, here, and pass the resolved integer
+  # everywhere downstream. "auto" resolves against the ambient future plan and
+  # machine core count, so resolving again at another call site could yield a
+  # different value mid-run. Never use control$rxThreads raw below this point.
+  resolved_rx_threads <- nlmixr2utils::resolveRxThreads(
+    control$workers,
+    control$rxThreads
+  )
+  worker_desc <- .workerDescription(control$workers, resolved_rx_threads)
 
   if (isTRUE(control$addModels)) {
     if (
@@ -189,6 +197,20 @@ runSSE <- function(
         "Add-models requests must reuse the original {.arg updateFix} setting."
       )
     }
+    recorded_rx_threads <- existing_run_info$rxThreads
+    if (
+      !is.null(recorded_rx_threads) &&
+        !identical(
+          as.integer(recorded_rx_threads),
+          as.integer(resolved_rx_threads)
+        )
+    ) {
+      cli::cli_warn(c(
+        "!" = "The original run used {.arg rxThreads = {as.integer(recorded_rx_threads)}}, but this add-models run resolves to {.arg rxThreads = {as.integer(resolved_rx_threads)}}.",
+        "i" = "Saved simulated datasets are reused unchanged, so the added models are fitted to the same data; only the new fits run under a different thread count.",
+        "i" = "The recorded {.field rxThreads} keeps the original value."
+      ))
+    }
     alternatives <- .selectAddModelAlternatives(alternatives, existing_run_info)
   } else if (!is.null(existing_run_info)) {
     .validateResumeRequest(
@@ -201,7 +223,8 @@ runSSE <- function(
         fitName,
         alternatives,
         control
-      ))
+      )),
+      rxThreads = resolved_rx_threads
     )
     if (
       identical(existing_run_info$status, "completed") &&
@@ -290,6 +313,11 @@ runSSE <- function(
   }
   run_info$projectedTotalFits <- projected_total
   run_info$workers <- control$workers
+  run_info$rxThreads <- .addModelsRxThreads(
+    existing_run_info %||% list(),
+    resolved_rx_threads,
+    control$addModels
+  )
   run_info$runDirMode <- run_dir$mode
   run_info$alternativeLabels <- vapply(
     Filter(function(spec) identical(spec$role, "alternative"), all_fit_specs),
@@ -412,6 +440,7 @@ runSSE <- function(
       nlmixr2utils::.withWorkerPlan(control$workers, {
         nlmixr2utils::.plap(
           pending_data,
+          rxThreads = resolved_rx_threads,
           function(sample_id) {
             record <- .simulationRecord(
               sample = sample_id,
@@ -429,7 +458,7 @@ runSSE <- function(
             paste0("simulation ", sample_id, "/", samples)
           }
         )
-      })
+      }, rxThreads = resolved_rx_threads)
     }
 
     state <- .syncSSEState(
@@ -480,6 +509,7 @@ runSSE <- function(
     nlmixr2utils::.withWorkerPlan(control$workers, {
       nlmixr2utils::.plap(
         pending_fit,
+        rxThreads = resolved_rx_threads,
         function(key) {
           parts <- strsplit(key, "::", fixed = TRUE)[[1L]]
           label <- parts[[1L]]
@@ -503,7 +533,7 @@ runSSE <- function(
           paste0(parts[[1L]], " ", parts[[2L]], "/", samples)
         }
       )
-    })
+    }, rxThreads = resolved_rx_threads)
   }
 
   fit_records <- lapply(fit_keys, fit_cache$get)
