@@ -24,7 +24,7 @@ Imports:
     lotri,
     nlme,
     nlmixr2est,
-    nlmixr2utils (>= 0.2),
+    nlmixr2utils (>= 0.3),
     rxode2,
     tidyr
 Suggests:

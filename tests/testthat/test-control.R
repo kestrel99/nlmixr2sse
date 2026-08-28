@@ -79,8 +79,9 @@ test_that("runSSEControl exposes rxThreads with an auto default", {
 
 test_that("runSSEControl rejects invalid rxThreads", {
   for (bad in list(0L, -1L, 2.5, "many", c(1L, 2L), NA_integer_)) {
+    label <- paste("rxThreads =", paste(deparse(bad), collapse = " "))
     err <- capture_sse_error(runSSEControl(rxThreads = bad))
     expect_s3_class(err, "error")
-    expect_match(conditionMessage(err), "rxThreads")
+    expect_match(conditionMessage(err), "rxThreads", info = label)
   }
 })
