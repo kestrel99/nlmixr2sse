@@ -85,3 +85,19 @@ test_that("runSSEControl rejects invalid rxThreads", {
     expect_match(conditionMessage(err), "rxThreads", info = label)
   }
 })
+
+test_that("workerDescription reports the resolved rxode2 thread count", {
+  expect_match(
+    nlmixr2sse:::.workerDescription(1L, rxThreads = 8L),
+    "sequential \\(workers = 1\\), 8 rxode2 thread"
+  )
+  expect_match(
+    nlmixr2sse:::.workerDescription(4L, rxThreads = 2L),
+    "parallel \\(4 workers\\), 2 rxode2 thread"
+  )
+  # omitted thread count keeps the bare description
+  expect_equal(
+    nlmixr2sse:::.workerDescription(1L),
+    "sequential (workers = 1)"
+  )
+})

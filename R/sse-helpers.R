@@ -96,24 +96,36 @@
   )
 }
 
-.workerDescription <- function(workers) {
-  if (is.null(workers)) {
-    return("sequential (using current future::plan())")
-  }
-  if (identical(workers, "auto")) {
+.workerDescription <- function(workers, rxThreads = NULL) {
+  base <- if (is.null(workers)) {
+    "sequential (using current future::plan())"
+  } else if (identical(workers, "auto")) {
     if (requireNamespace("future", quietly = TRUE)) {
-      return(paste0(
+      paste0(
         "parallel, auto (",
         future::availableCores(omit = 1L),
         " workers)"
-      ))
+      )
+    } else {
+      "sequential (future not available)"
     }
-    return("sequential (future not available)")
+  } else if (identical(as.integer(workers), 1L)) {
+    "sequential (workers = 1)"
+  } else {
+    paste0("parallel (", workers, " workers)")
   }
-  if (identical(as.integer(workers), 1L)) {
-    return("sequential (workers = 1)")
+
+  if (is.null(rxThreads)) {
+    return(base)
   }
-  paste0("parallel (", workers, " workers)")
+  paste0(
+    base,
+    ", ",
+    rxThreads,
+    " rxode2 thread",
+    if (identical(as.integer(rxThreads), 1L)) "" else "s",
+    "/worker"
+  )
 }
 
 .emptyReferenceValues <- function() {
