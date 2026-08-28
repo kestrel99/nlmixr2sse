@@ -150,6 +150,10 @@ runSSE <- function(
   }
 
   sim_schema <- .rawResultsSchemaForFit(fit)
+  # Resolve rxThreads exactly once, here, and pass the resolved integer
+  # everywhere downstream. "auto" resolves against the ambient future plan and
+  # machine core count, so resolving again at another call site could yield a
+  # different value mid-run. Never use control$rxThreads raw below this point.
   resolved_rx_threads <- nlmixr2utils::resolveRxThreads(
     control$workers,
     control$rxThreads
@@ -205,7 +209,8 @@ runSSE <- function(
         fitName,
         alternatives,
         control
-      ))
+      )),
+      rxThreads = resolved_rx_threads
     )
     if (
       identical(existing_run_info$status, "completed") &&

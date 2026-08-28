@@ -554,14 +554,14 @@ test_that("runSSE resumes cached partial runs without duplicating rows", {
     .package = "nlmixr2sse"
   )
 
-  res <- runSSE(
+  res <- suppressWarnings(runSSE(
     fake_sse_fit(),
     alternativeModels = sseModel(fake_sse_fit(), label = "alt1"),
     samples = 2L,
     control = runSSEControl(workers = 1L),
     outputDir = tmp,
     restart = FALSE
-  )
+  ))
 
   expect_s3_class(res, "nlmixr2SSE")
   expect_equal(nrow(res$rawResults), 4L)
@@ -886,4 +886,72 @@ test_that("runSSE supports raw-results and covariance parameter sources end to e
   ]
   expect_gte(length(unique(signif(cov_tka, 8))), 2L)
   expect_equal(length(unique(signif(cov_omega, 8))), 1L)
+})
+
+test_that("validateResumeRequest aborts on an rxThreads mismatch", {
+  run_info <- list(
+    fitName = "fake_sse_fit",
+    samples = 2L,
+    parameterSource = "fixed",
+    estimateSimulation = TRUE,
+    rxThreads = 8L
+  )
+
+  err <- capture_sse_error(
+    .validateResumeRequest(
+      existingRunInfo = run_info,
+      fitName = "fake_sse_fit",
+      samples = 2L,
+      control = runSSEControl(workers = 1L),
+      requestedLabels = character(0),
+      rxThreads = 2L
+    )
+  )
+
+  expect_s3_class(err, "error")
+  expect_match(conditionMessage(err), "rxThreads")
+  expect_match(conditionMessage(err), "8")
+  expect_match(conditionMessage(err), "2")
+})
+
+test_that("validateResumeRequest warns when rxThreads was never recorded", {
+  run_info <- list(
+    fitName = "fake_sse_fit",
+    samples = 2L,
+    parameterSource = "fixed",
+    estimateSimulation = TRUE
+  )
+
+  expect_warning(
+    .validateResumeRequest(
+      existingRunInfo = run_info,
+      fitName = "fake_sse_fit",
+      samples = 2L,
+      control = runSSEControl(workers = 1L),
+      requestedLabels = character(0),
+      rxThreads = 4L
+    ),
+    "rxThreads"
+  )
+})
+
+test_that("validateResumeRequest accepts a matching rxThreads", {
+  run_info <- list(
+    fitName = "fake_sse_fit",
+    samples = 2L,
+    parameterSource = "fixed",
+    estimateSimulation = TRUE,
+    rxThreads = 4L
+  )
+
+  expect_silent(
+    .validateResumeRequest(
+      existingRunInfo = run_info,
+      fitName = "fake_sse_fit",
+      samples = 2L,
+      control = runSSEControl(workers = 1L),
+      requestedLabels = character(0),
+      rxThreads = 4L
+    )
+  )
 })
