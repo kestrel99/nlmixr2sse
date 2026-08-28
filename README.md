@@ -157,6 +157,26 @@ plotSSEPpePower(sse)
 plot(sse, type = "diagnostics")
 ```
 
+## Parallel execution
+
+`runSSEControl(workers = )` sets how many replicates run in parallel, and
+`rxThreads` sets how many rxode2 threads each worker may use. The default,
+`rxThreads = "auto"`, divides the machine's cores among the workers.
+
+```r
+sse <- runSSE(
+  fit,
+  samples = 500,
+  seed = 42,
+  control = runSSEControl(workers = 4, rxThreads = "auto")
+)
+```
+
+rxode2's thread count changes simulated values even under a fixed seed, so
+`rxThreads` is part of a run's reproducibility contract. The resolved count is
+stored in `run_info` and checked on resume. To reproduce a study on different
+hardware, pass the recorded integer explicitly rather than relying on `"auto"`.
+
 ## Credit where it's due
 
 `nlmixr2sse` is based on the [PsN implementation](https://github.com/UUPharmacometrics/PsN/releases/download/v5.7.0/sse_userguide.pdf) written by Lars Lindbom, 
