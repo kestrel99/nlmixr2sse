@@ -955,3 +955,83 @@ test_that("validateResumeRequest accepts a matching rxThreads", {
     )
   )
 })
+
+test_that("addModels warns when rxThreads differs from the recorded run", {
+  tmp <- tempfile("nlmixr2sse-addmodels-rxthreads-")
+  on.exit(unlink(tmp, recursive = TRUE, force = TRUE), add = TRUE)
+  write_fake_sse_run_dir(tmp)
+
+  run_info <- readRDS(file.path(tmp, "run_info.rds"))
+  run_info$rxThreads <- 8L
+  saveRDS(run_info, file.path(tmp, "run_info.rds"))
+
+  saveRDS(
+    data.frame(ID = 1, DV = 10, stringsAsFactors = FALSE),
+    file.path(tmp, "simulations", "sim_0001.rds")
+  )
+  saveRDS(
+    data.frame(ID = 2, DV = 20, stringsAsFactors = FALSE),
+    file.path(tmp, "simulations", "sim_0002.rds")
+  )
+  nlmixr2utils::withRunSeed(tmp, seed = 42, prefix = "sse")
+
+  testthat::local_mocked_bindings(
+    .fitTaskRecord = function(sample, spec, simRecord, unionSchema, ...) {
+      list(
+        success = TRUE,
+        row = nlmixr2utils::rawResultsRow(
+          fit = NULL,
+          source = "sse",
+          hypothesis = spec$hypothesis,
+          sample = sample,
+          modelLabel = spec$label,
+          role = spec$role,
+          objf = 150 + sample,
+          schema = unionSchema
+        ),
+        sample = as.integer(sample),
+        model_label = spec$label,
+        role = spec$role,
+        hypothesis = spec$hypothesis
+      )
+    },
+    .package = "nlmixr2sse"
+  )
+
+  expect_warning(
+    try(
+      runSSE(
+        fake_sse_fit(),
+        alternativeModels = sseModel(fake_sse_fit(), label = "alt_rxt"),
+        samples = 2L,
+        control = runSSEControl(addModels = TRUE, workers = 1L, rxThreads = 2L),
+        outputDir = tmp,
+        restart = FALSE
+      ),
+      silent = TRUE
+    ),
+    "rxThreads"
+  )
+})
+
+test_that("addModels preserves the originally recorded rxThreads", {
+  existing <- list(
+    rxThreads = 8L,
+    parameterSource = "fixed",
+    estimateSimulation = TRUE
+  )
+  expect_equal(
+    .addModelsRxThreads(existing, resolvedRxThreads = 2L, addModels = TRUE),
+    8L
+  )
+  # a fresh (non-addModels) run records what it actually resolved
+  expect_equal(
+    .addModelsRxThreads(existing, resolvedRxThreads = 2L, addModels = FALSE),
+    2L
+  )
+  # an addModels run against a directory with no recorded value falls back
+  expect_equal(
+    .addModelsRxThreads(list(), resolvedRxThreads = 2L, addModels = TRUE),
+    2L
+  )
+})

@@ -128,6 +128,28 @@
   )
 }
 
+#' Choose the rxThreads value to record in run_info
+#'
+#' An add-models run refits new alternatives against the SAVED simulated
+#' datasets, so the recorded thread count should keep describing how those
+#' datasets were produced rather than being overwritten by whatever the
+#' add-models call happens to resolve to.
+#' @noRd
+.addModelsRxThreads <- function(
+  existingRunInfo,
+  resolvedRxThreads,
+  addModels
+) {
+  if (!isTRUE(addModels)) {
+    return(resolvedRxThreads)
+  }
+  recorded <- existingRunInfo$rxThreads
+  if (is.null(recorded)) {
+    return(resolvedRxThreads)
+  }
+  as.integer(recorded)
+}
+
 .emptyReferenceValues <- function() {
   data.frame(
     parameter = character(0),

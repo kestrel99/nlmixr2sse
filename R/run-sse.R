@@ -197,6 +197,20 @@ runSSE <- function(
         "Add-models requests must reuse the original {.arg updateFix} setting."
       )
     }
+    recorded_rx_threads <- existing_run_info$rxThreads
+    if (
+      !is.null(recorded_rx_threads) &&
+        !identical(
+          as.integer(recorded_rx_threads),
+          as.integer(resolved_rx_threads)
+        )
+    ) {
+      cli::cli_warn(c(
+        "!" = "The original run used {.arg rxThreads = {as.integer(recorded_rx_threads)}}, but this add-models run resolves to {.arg rxThreads = {as.integer(resolved_rx_threads)}}.",
+        "i" = "Saved simulated datasets are reused unchanged, so the added models are fitted to the same data; only the new fits run under a different thread count.",
+        "i" = "The recorded {.field rxThreads} keeps the original value."
+      ))
+    }
     alternatives <- .selectAddModelAlternatives(alternatives, existing_run_info)
   } else if (!is.null(existing_run_info)) {
     .validateResumeRequest(
@@ -299,7 +313,11 @@ runSSE <- function(
   }
   run_info$projectedTotalFits <- projected_total
   run_info$workers <- control$workers
-  run_info$rxThreads <- resolved_rx_threads
+  run_info$rxThreads <- .addModelsRxThreads(
+    existing_run_info %||% list(),
+    resolved_rx_threads,
+    control$addModels
+  )
   run_info$runDirMode <- run_dir$mode
   run_info$alternativeLabels <- vapply(
     Filter(function(spec) identical(spec$role, "alternative"), all_fit_specs),
