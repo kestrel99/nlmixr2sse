@@ -174,8 +174,11 @@ sse <- runSSE(
 
 rxode2's thread count changes simulated values even under a fixed seed, so
 `rxThreads` is part of a run's reproducibility contract. The resolved count is
-stored in `run_info` and checked on resume. To reproduce a study on different
-hardware, pass the recorded integer explicitly rather than relying on `"auto"`.
+stored in `run_info` and checked on resume, where a mismatch aborts. Extending a
+run with `addModels` reuses the saved datasets unchanged, so a mismatch there
+only warns and the original recorded value is kept. To reproduce a study on
+different hardware, pass the recorded integer explicitly rather than relying on
+`"auto"`.
 
 ## Credit where it's due
 

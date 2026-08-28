@@ -9,7 +9,10 @@
 * **Reproducibility note:** rxode2's thread count changes simulated values even
   under a fixed seed, so `rxThreads` affects results, not only speed. The
   resolved thread count is now recorded in `run_info` and checked when a run is
-  resumed. Because the default is `"auto"`, which derives from the machine's
+  resumed, where a mismatch aborts because the replicates would no longer be
+  comparable. Extending a completed run with `addModels` refits against the
+  saved simulated datasets, so a mismatch there only warns and the originally
+  recorded value is kept. Because the default is `"auto"`, which derives from the machine's
   core count, reproducing a study on different hardware requires passing the
   recorded integer explicitly, e.g. `runSSEControl(rxThreads = 16)`. Runs made
   with earlier versions used rxode2's own default and will not reproduce
