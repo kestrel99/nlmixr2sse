@@ -18,6 +18,7 @@ runSSEControl(
   simulationPostProcess = NULL,
   initialEtas = FALSE,
   workers = NULL,
+  rxThreads = "auto",
   addModels = FALSE,
   saveFits = TRUE,
   saveDatasets = TRUE,
@@ -62,6 +63,12 @@ may declare any subset of the named arguments \code{data}, \code{sample},
 current release.}
 
 \item{workers}{Worker setting passed through to shared worker helpers.}
+
+\item{rxThreads}{Number of rxode2 threads each worker may use. \code{"auto"}
+(the default) divides the machine's cores among the workers. A positive
+integer sets the count explicitly; \code{NULL} defers to rxode2's own default.
+Note that rxode2's thread count changes simulated values even under a
+fixed seed, so this setting affects reproducibility, not only speed.}
 
 \item{addModels}{Logical. Extend a completed run by fitting only new
 alternative models on the saved simulated datasets.}

@@ -32,6 +32,11 @@
 #' @param initialEtas Reserved for later work. Must remain `FALSE` in the
 #'   current release.
 #' @param workers Worker setting passed through to shared worker helpers.
+#' @param rxThreads Number of rxode2 threads each worker may use. `"auto"`
+#'   (the default) divides the machine's cores among the workers. A positive
+#'   integer sets the count explicitly; `NULL` defers to rxode2's own default.
+#'   Note that rxode2's thread count changes simulated values even under a
+#'   fixed seed, so this setting affects reproducibility, not only speed.
 #' @param addModels Logical. Extend a completed run by fitting only new
 #'   alternative models on the saved simulated datasets.
 #' @param saveFits,saveDatasets Logical retention flags used by restart and
@@ -54,6 +59,7 @@ runSSEControl <- function(
   simulationPostProcess = NULL,
   initialEtas = FALSE,
   workers = NULL,
+  rxThreads = "auto",
   addModels = FALSE,
   saveFits = TRUE,
   saveDatasets = TRUE,
@@ -89,6 +95,7 @@ runSSEControl <- function(
   checkmate::assertFlag(saveDatasets)
   checkmate::assertFlag(overwrite)
   nlmixr2utils::.validateWorkers(workers) # nolint: object_usage_linter.
+  nlmixr2utils::.validateRxThreads(rxThreads) # nolint: object_usage_linter.
 
   if (!is.null(inFilter)) {
     .validateFilterInput(inFilter, "inFilter")
@@ -143,6 +150,7 @@ runSSEControl <- function(
       simulationPostProcess = simulationPostProcess,
       initialEtas = initialEtas,
       workers = workers,
+      rxThreads = rxThreads,
       addModels = addModels,
       saveFits = saveFits,
       saveDatasets = saveDatasets,

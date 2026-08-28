@@ -67,3 +67,20 @@ test_that("runSSEControl validates raw-results filters", {
   expect_s3_class(ctl, "nlmixr2SSEControl")
   expect_equal(ctl$parameterSource, "rawres")
 })
+
+test_that("runSSEControl exposes rxThreads with an auto default", {
+  ctl <- runSSEControl()
+  expect_equal(ctl$rxThreads, "auto")
+
+  expect_equal(runSSEControl(rxThreads = 1L)$rxThreads, 1L)
+  expect_equal(runSSEControl(rxThreads = 8L)$rxThreads, 8L)
+  expect_null(runSSEControl(rxThreads = NULL)$rxThreads)
+})
+
+test_that("runSSEControl rejects invalid rxThreads", {
+  for (bad in list(0L, -1L, 2.5, "many", c(1L, 2L), NA_integer_)) {
+    err <- capture_sse_error(runSSEControl(rxThreads = bad))
+    expect_s3_class(err, "error")
+    expect_match(conditionMessage(err), "rxThreads")
+  }
+})
