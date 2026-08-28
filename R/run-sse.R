@@ -150,7 +150,11 @@ runSSE <- function(
   }
 
   sim_schema <- .rawResultsSchemaForFit(fit)
-  worker_desc <- .workerDescription(control$workers)
+  resolved_rx_threads <- nlmixr2utils::resolveRxThreads(
+    control$workers,
+    control$rxThreads
+  )
+  worker_desc <- .workerDescription(control$workers, resolved_rx_threads)
 
   if (isTRUE(control$addModels)) {
     if (
@@ -290,6 +294,7 @@ runSSE <- function(
   }
   run_info$projectedTotalFits <- projected_total
   run_info$workers <- control$workers
+  run_info$rxThreads <- resolved_rx_threads
   run_info$runDirMode <- run_dir$mode
   run_info$alternativeLabels <- vapply(
     Filter(function(spec) identical(spec$role, "alternative"), all_fit_specs),
@@ -412,6 +417,7 @@ runSSE <- function(
       nlmixr2utils::.withWorkerPlan(control$workers, {
         nlmixr2utils::.plap(
           pending_data,
+          rxThreads = resolved_rx_threads,
           function(sample_id) {
             record <- .simulationRecord(
               sample = sample_id,
@@ -429,7 +435,7 @@ runSSE <- function(
             paste0("simulation ", sample_id, "/", samples)
           }
         )
-      })
+      }, rxThreads = resolved_rx_threads)
     }
 
     state <- .syncSSEState(
@@ -480,6 +486,7 @@ runSSE <- function(
     nlmixr2utils::.withWorkerPlan(control$workers, {
       nlmixr2utils::.plap(
         pending_fit,
+        rxThreads = resolved_rx_threads,
         function(key) {
           parts <- strsplit(key, "::", fixed = TRUE)[[1L]]
           label <- parts[[1L]]
@@ -503,7 +510,7 @@ runSSE <- function(
           paste0(parts[[1L]], " ", parts[[2L]], "/", samples)
         }
       )
-    })
+    }, rxThreads = resolved_rx_threads)
   }
 
   fit_records <- lapply(fit_keys, fit_cache$get)
