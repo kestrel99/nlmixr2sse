@@ -185,9 +185,14 @@
 
   if (any(!is.finite(variances[usable]) | variances[usable] <= 0)) {
     bad <- which(usable & (!is.finite(variances) | variances <= 0))
+    badLabel <- if (!is.null(rownames(omega0))) {
+      rownames(omega0)[bad]
+    } else {
+      as.character(bad)
+    }
     .abortSSE(
       paste0(
-        "OMEGA variance {.val {bad}} is zero or non-finite, so its uncertainty ",
+        "OMEGA variance {.val {badLabel}} is zero or non-finite, so its uncertainty ",
         "cannot be characterised. Fix the parameter, or use ",
         "{.code parameterSource = \"fixed\"}."
       )

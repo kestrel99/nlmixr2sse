@@ -212,3 +212,11 @@ test_that("omegaWishartSpec rejects a degenerate variance", {
   err <- capture_sse_error(.omegaWishartSpec(omega0, c(0.06, 0.03)))
   expect_s3_class(err, "error")
 })
+
+test_that("omegaWishartSpec names the offending eta in the bad-variance abort", {
+  omega0 <- diag(c(0, 0.12))
+  dimnames(omega0) <- list(c("eta.ka", "eta.cl"), c("eta.ka", "eta.cl"))
+  err <- capture_sse_error(.omegaWishartSpec(omega0, c(0.06, 0.03)))
+  expect_s3_class(err, "error")
+  expect_match(conditionMessage(err), "eta.ka", fixed = TRUE)
+})
