@@ -42,9 +42,12 @@ expression.}
 \item{comparisons}{Optional \code{sseComparison()} object or list of
 \code{sseComparison()} objects naming the model comparisons this run should
 report. When \code{NULL}, comparisons are inferred later, at reporting time,
-against every alternative model. On a resumed run, omitting this argument
-keeps the comparisons already recorded for the run; passing it replaces
-them.}
+against every alternative model. Every label a comparison names (or the
+\code{"simulation"} token) must match the fitted simulation model or a model
+in \code{alternativeModels} -- including models an \code{addModels} call is
+adding -- or \code{runSSE()} aborts before doing any simulation or fitting
+work. On a resumed run, omitting this argument keeps the comparisons
+already recorded for the run; passing it replaces them.}
 
 \item{...}{Reserved for future extensions. Unsupported arguments raise an
 error.}

@@ -27,9 +27,12 @@
 #' @param comparisons Optional `sseComparison()` object or list of
 #'   `sseComparison()` objects naming the model comparisons this run should
 #'   report. When `NULL`, comparisons are inferred later, at reporting time,
-#'   against every alternative model. On a resumed run, omitting this argument
-#'   keeps the comparisons already recorded for the run; passing it replaces
-#'   them.
+#'   against every alternative model. Every label a comparison names (or the
+#'   `"simulation"` token) must match the fitted simulation model or a model
+#'   in `alternativeModels` -- including models an `addModels` call is
+#'   adding -- or `runSSE()` aborts before doing any simulation or fitting
+#'   work. On a resumed run, omitting this argument keeps the comparisons
+#'   already recorded for the run; passing it replaces them.
 #' @param ... Reserved for future extensions. Unsupported arguments raise an
 #'   error.
 #'
@@ -278,6 +281,17 @@ runSSE <- function(
     c(existing_fit_specs, fit_specs_snapshot)
   } else {
     fit_specs_snapshot
+  }
+  if (!is.null(comparisons)) {
+    # Every label a comparison can legitimately name is knowable right here --
+    # the simulation model plus every fit spec, addModels alternatives
+    # included -- so a typo is caught before any simulation or fitting work
+    # runs, instead of surfacing only when something later resolves it.
+    .assertComparisonLabelsExist(
+      comparisons,
+      labels = vapply(all_fit_specs, `[[`, character(1), "label"),
+      simLabel = fitName
+    )
   }
   projected_total <- samples * length(all_fit_specs)
   pending_projected <- samples * length(fit_specs)

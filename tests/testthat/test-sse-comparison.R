@@ -125,3 +125,121 @@ test_that(".resolveComparisons rejects duplicate comparison labels", {
     "unique"
   )
 })
+
+# --- eager comparison-label validation in runSSE() --------------------------
+#
+# A comparison's labels are fully knowable at runSSE() time -- the simulation
+# model plus every fit spec, including addModels alternatives -- so a typo
+# should abort before any simulation/fitting work runs rather than surfacing
+# only when something later resolves the comparison.
+
+test_that("runSSE aborts on a comparison naming a model it will not fit", {
+  err <- capture_sse_error(
+    runSSE(
+      fake_sse_fit(),
+      alternativeModels = sseModel(fake_sse_fit(), label = "alt1"),
+      comparisons = sseComparison("simulation", "typo", df = 1),
+      outputDir = tempfile("nlmixr2sse-cmp-typo-"),
+      restart = TRUE
+    )
+  )
+
+  expect_s3_class(err, "error")
+  # The message must name both the offending label and the real ones, so a
+  # typo is diagnosable from the error alone.
+  expect_match(conditionMessage(err), "typo")
+  expect_match(conditionMessage(err), "fake_sse_fit")
+  expect_match(conditionMessage(err), "alt1")
+})
+
+test_that("runSSE addModels succeeds when a comparison names the newly added alternative", {
+  tmp <- tempfile("nlmixr2sse-cmp-addmodels-")
+  dir.create(tmp)
+  on.exit(unlink(tmp, recursive = TRUE, force = TRUE), add = TRUE)
+  write_fake_sse_run_dir(tmp)
+  saveRDS(
+    data.frame(ID = 1, DV = 10, stringsAsFactors = FALSE),
+    file.path(tmp, "simulations", "sim_0001.rds")
+  )
+  saveRDS(
+    data.frame(ID = 2, DV = 20, stringsAsFactors = FALSE),
+    file.path(tmp, "simulations", "sim_0002.rds")
+  )
+  nlmixr2utils::withRunSeed(tmp, seed = 42, prefix = "sse")
+
+  testthat::local_mocked_bindings(
+    .fitTaskRecord = function(sample, spec, simRecord, unionSchema, ...) {
+      list(
+        success = TRUE,
+        row = nlmixr2utils::rawResultsRow(
+          fit = NULL,
+          source = "sse",
+          hypothesis = spec$hypothesis,
+          sample = sample,
+          modelLabel = spec$label,
+          role = spec$role,
+          theta = c(
+            tka = simRecord$initial[["tka"]] + 0.01,
+            tcl = simRecord$initial[["tcl"]] + 0.01
+          ),
+          objf = 150 + sample,
+          schema = unionSchema
+        ),
+        sample = as.integer(sample),
+        model_label = spec$label,
+        role = spec$role,
+        hypothesis = spec$hypothesis
+      )
+    },
+    .package = "nlmixr2sse"
+  )
+
+  # "alt2" does not exist yet when the argument is captured -- it is only
+  # knowable once addModels merges it into the fit-spec list, which is why
+  # the check has to run after that merge rather than at argument time.
+  res <- runSSE(
+    fake_sse_fit(),
+    alternativeModels = sseModel(fake_sse_fit(), label = "alt2"),
+    samples = 2L,
+    control = runSSEControl(addModels = TRUE, workers = 1L),
+    outputDir = tmp,
+    restart = FALSE,
+    comparisons = sseComparison("simulation", "alt2", df = 1)
+  )
+
+  expect_s3_class(res, "nlmixr2SSE")
+  expect_equal(res$runInfo$comparisons[[1L]]$reduced, "alt2")
+})
+
+test_that(".assertComparisonLabelsExist accepts the simulation token", {
+  expect_silent(
+    .assertComparisonLabelsExist(
+      list(sseComparison("simulation", "alt1", df = 1)),
+      labels = c("fake_sse_fit", "alt1"),
+      simLabel = "fake_sse_fit"
+    )
+  )
+})
+
+test_that(".assertComparisonLabelsExist pluralises the unknown-model count", {
+  expect_error(
+    .assertComparisonLabelsExist(
+      list(sseComparison("simulation", "typo", df = 1)),
+      labels = c("fake_sse_fit", "alt1"),
+      simLabel = "fake_sse_fit"
+    ),
+    "name model that this run will not fit"
+  )
+
+  expect_error(
+    .assertComparisonLabelsExist(
+      list(
+        sseComparison("simulation", "typo1", df = 1, label = "c1"),
+        sseComparison("simulation", "typo2", df = 1, label = "c2")
+      ),
+      labels = c("fake_sse_fit", "alt1"),
+      simLabel = "fake_sse_fit"
+    ),
+    "names models that this run will not fit"
+  )
+})

@@ -62,6 +62,21 @@ sseComparison <- function(full, reduced, df = NULL, alpha = 0.05,
   })
 }
 
+.assertComparisonLabelsExist <- function(comparisons, labels, simLabel) {
+  named <- unlist(lapply(comparisons, function(cmp) {
+    resolve1 <- function(v) if (identical(v, "simulation")) simLabel else v
+    c(resolve1(cmp$full), resolve1(cmp$reduced))
+  }))
+  unknown <- setdiff(unique(named), labels)
+  if (length(unknown) > 0L) {
+    .abortSSE(c(
+      "{.arg comparisons} name{?s} model{?s} that this run will not fit: {.val {unknown}}.",
+      "i" = "Models in this run: {.val {labels}}.",
+      "i" = "Use {.val simulation} for the simulation model, or add the model to {.arg alternativeModels}."
+    ))
+  }
+}
+
 .simulationLabel <- function(x) .simulationSpec(x)$label
 
 .knownModelLabels <- function(x) {
