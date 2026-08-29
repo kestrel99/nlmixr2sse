@@ -64,3 +64,23 @@ test_that("modelDegreesFreedom falls back to 1 for an unknown label", {
   sse <- fake_sse_object()
   expect_equal(.modelDegreesFreedom(sse, "no_such_model"), 1L)
 })
+
+test_that("fake_paired_sse_object requires at least one finite OFV", {
+  expect_error(
+    fake_paired_sse_object(full_ofv = numeric(0), reduced_ofv = numeric(0)),
+    "at least one finite OFV"
+  )
+  expect_error(
+    fake_paired_sse_object(full_ofv = NA_real_, reduced_ofv = NA_real_),
+    "at least one finite OFV"
+  )
+})
+
+test_that("fake_ppe_sse_object carries the real seed into runInfo", {
+  sse <- fake_ppe_sse_object(n = 5L, seed = 7L)
+  expect_equal(sse$runInfo$seed, 7L)
+})
+
+test_that("fake_ppe_sse_object rejects nNonPositive greater than n", {
+  expect_error(fake_ppe_sse_object(n = 5L, nNonPositive = 9L))
+})

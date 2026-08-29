@@ -31,8 +31,15 @@ ppe_initial_estimates <- function(n) {
 fake_paired_sse_object <- function(full_ofv, reduced_ofv,
                                    fit_label = "fake_sse_fit",
                                    alt_label = "alt1",
-                                   subjects = 12L) {
+                                   subjects = 12L,
+                                   seed = 42L) {
   stopifnot(length(full_ofv) == length(reduced_ofv))
+  # Fail here rather than several frames down in .computeSSEOutputs(), which
+  # reports only "argument is of length zero" when handed no rows at all.
+  stopifnot(
+    "need at least one finite OFV" =
+      any(is.finite(full_ofv) | is.finite(reduced_ofv))
+  )
   fit <- fake_sse_fit()
   n <- length(full_ofv)
 
@@ -59,7 +66,10 @@ fake_paired_sse_object <- function(full_ofv, reduced_ofv,
   raw_results <- do.call(rbind, rows)
 
   run_info <- list(
-    fitName = fit_label, samples = n, seed = 42L,
+    # The real seed must be carried: Task 6's .ppeDefaultSeed() derives the
+    # bootstrap seed from runInfo$seed, so a hardcoded value would make every
+    # fixture bootstrap identically regardless of the data it was built from.
+    fitName = fit_label, samples = n, seed = as.integer(seed),
     parameterSource = "fixed", estimateSimulation = TRUE,
     studySampleSize = subjects, studySampleUnit = "subjects",
     studyIdColumn = "ID", studyObservationCount = 2L * subjects,
@@ -92,6 +102,7 @@ fake_paired_sse_object <- function(full_ofv, reduced_ofv,
 # so the estimator can be checked against a known noncentrality parameter.
 fake_ppe_sse_object <- function(df = 1, ncp = 8, n = 200L, seed = 101L,
                                 subjects = 12L, nNonPositive = 0L) {
+  stopifnot(nNonPositive <= n)
   d <- ppe_dofv(n = n, df = df, ncp = ncp, seed = seed)
   if (nNonPositive > 0L) {
     idx <- seq_len(nNonPositive)
@@ -99,5 +110,5 @@ fake_ppe_sse_object <- function(df = 1, ncp = 8, n = 200L, seed = 101L,
   }
   full <- rep(1000, n)
   fake_paired_sse_object(full_ofv = full, reduced_ofv = full + d,
-                         subjects = subjects)
+                         subjects = subjects, seed = seed)
 }
