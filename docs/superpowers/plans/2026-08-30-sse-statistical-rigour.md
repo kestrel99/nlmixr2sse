@@ -1795,14 +1795,12 @@ git commit -m "feat: parameter-draw adequacy summaries"
 **Files:**
 - Modify: `docs/sse-technical-reference.md`, `README.md`, `vignettes/runSSE.Rmd`, `NEWS.md`, `_pkgdown.yml`, roxygen comments
 
-- [ ] **Step 1: Update the technical reference**
+The technical reference is updated **last**, in Step 5, once everything else is
+implemented and verified. It is a description of what the package does, so
+writing it before the validation sweep passes risks documenting intent rather
+than behaviour.
 
-It currently understates the PPE divergence. Replace its PPE section with the
-distribution-based method as primary: the estimand, the retained-positive
-truncation and its upward bias, boundary solutions, bootstrap semantics, the
-proportional-scaling assumption, and what the diagnostics can and cannot show.
-
-- [ ] **Step 2: Write the NEWS entries**
+- [ ] **Step 1: Write the NEWS entries**
 
 ```markdown
 ## Breaking changes
@@ -1820,7 +1818,7 @@ proportional-scaling assumption, and what the diagnostics can and cannot show.
   alias for one release.
 ```
 
-- [ ] **Step 3: Document the limitations honestly**
+- [ ] **Step 2: Document the limitations honestly**
 
 In `?plotSSEPpePower`, under a **Limitations** heading, state that the fit
 excludes non-positive statistics the noncentral chi-square cannot produce and is
@@ -1833,7 +1831,7 @@ State that an explicit comparison does not prove nesting or justify its null
 distribution, and that boundary hypotheses need user-supplied critical values or
 empirical null calibration.
 
-- [ ] **Step 4: Regenerate documentation with the pinned toolchain**
+- [ ] **Step 3: Regenerate documentation with the pinned toolchain**
 
 Run: `Rscript -e 'devtools::document()'`
 Expected: `Config/roxygen2/version: 8.1.0` unchanged. Compare the `NAMESPACE`
@@ -1841,7 +1839,7 @@ diff as a sorted set and confirm only the intended exports were added:
 `sseComparison`, `comparisonSummary`, `ppeSummary`, `plotSSEPpeDiagnostics`,
 `validateSSEPpeScaling`, `parameterDrawSummary`, `plotSSEParameterDraws`.
 
-- [ ] **Step 5: Run the full validation sweep**
+- [ ] **Step 4: Run the full validation sweep**
 
 ```bash
 NOT_CRAN=true Rscript -e 'pkgload::load_all("."); testthat::test_dir("tests/testthat", reporter="progress", stop_on_failure=FALSE)'
@@ -1856,7 +1854,101 @@ in neither `Imports` nor `Suggests` produces
 `checking for unstated dependencies in 'tests' ... WARNING`. Either declare the
 package or use base R instead.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Update the technical reference**
+
+This is the final substantive step. Do it only once Step 4 is green, so the
+guide describes what the package does rather than what the plan intended.
+
+`docs/sse-technical-reference.md` may carry uncommitted edits. Run
+`git diff docs/sse-technical-reference.md` first and build on them; do not
+overwrite. Section line numbers below are from the 734-line version at the time
+of planning and will have moved.
+
+**`## OFV differences, empirical power, and Type I error`** — the internal
+difference is currently defined as
+\(\Delta_i=\operatorname{OFV}_{\mathrm{reference},i}-\operatorname{OFV}_{\mathrm{alternative},i}\)
+with `direction` labels encoding tail directions only. Replace this with the
+comparison-based definition: the statistic is
+\(T_i=\operatorname{OFV}_{\mathrm{reduced},i}-\operatorname{OFV}_{\mathrm{full},i}\),
+computed from an explicit `sseComparison()` rather than inferred from a sign.
+State that the mode (`power` or `type1`) follows from which member was the
+simulation model, and that a comparison naming neither is refused because no
+hypothesis is then known true. Document the paired-evaluable denominator and
+every reported count: `n_attempted`, `n_full_evaluable`, `n_reduced_evaluable`,
+`n_paired_evaluable`, `n_excluded`, `n_exceeding`.
+
+**`## Parametric power estimation`** — rewrite with the distribution-based
+method as primary. It must state:
+
+- the estimand: one \(\lambda\) per comparison, fitted by maximum likelihood to
+  the whole distribution of positive \(T_i\), replacing the threshold-specific
+  inversion described in the existing paragraph beginning "The inversion is
+  performed independently for every threshold";
+- that the fit retains only \(T_i>0\) while using the *unconditional* noncentral
+  chi-square density, so it is biased upward, and that the excluded count is
+  always reported;
+- that the constrained MLE sits at the lower bound when the retained mean falls
+  below `df`, giving power exactly equal to `alpha` and a degenerate interval —
+  measured at **31/200** replicates for ncp 0.5, df 4, n 60, so this is common
+  rather than exotic;
+- that the parametric bootstrap interval is `model_based`: it draws from
+  `rchisq()`, which is strictly positive, so no replicate reproduces the
+  truncation the real data underwent, and it never covers misspecification;
+- that \(\lambda(n)=\lambda_0 n/n_0\) is an assumption, testable only by
+  `validateSSEPpeScaling()` across directly simulated study sizes;
+- what the ECDF, QQ, and Cramér–von Mises diagnostics can and cannot show —
+  evidence about approximation adequacy, never a pass/fail certification;
+- that `method = "exceedance"` retains the previous estimator verbatim, with
+  outputs renamed `threshold_exceedance_probability` and
+  `threshold_implied_ncp`.
+
+Delete the sentence stating that `plotSSEPpePower()` is unavailable when
+`estimateSimulation = FALSE`; Task 5 removes that restriction.
+
+Replace the degrees-of-freedom paragraph. \(d=\max\{1,p_{sim}-p_{alt}\}\) is now
+the fallback, not the definition: df comes from `sseComparison(df=)`, and the
+parameter-count route is marked `dfSource = "parameter_count"` and warns when
+PPE consumes it.
+
+**`## Parameter summaries`** — replace `rse` with `mcse_relative_bias` and
+document `mcse_bias`, both `ci_*` pairs, `n_effective`, and
+`n_effective_relative`. State that MCSE is computed from replicate-level errors
+and is therefore nonnegative even for a negative fixed truth, which `rse` was
+not.
+
+**`## Public interface`** — add `sseComparison()`, `comparisonSummary()`,
+`ppeSummary()`, `plotSSEPpeDiagnostics()`, `validateSSEPpeScaling()`,
+`parameterDrawSummary()`, and `plotSSEParameterDraws()`.
+
+**`## Statistically material differences from PsN`** — this section already
+carries hand-written edits. Amend rather than rewrite: the PPE estimator is no
+longer a material difference, since both now fit the Ueckert (2016)
+distribution-based noncentrality. What remains different is that `nlmixr2sse`
+derives the comparison mode structurally from which model was simulated, where
+PsN reads it from a model filename suffix (`_base|_r|_red|_reduced`); and that
+`nlmixr2sse` ships the ECDF diagnostic PsN's templates also provide, so the
+existing sentence saying it "does not implement that diagnostic" must go.
+
+**`## Interpretation checklist and limitations`** — the existing bullets on
+multiplicity and starting values already anticipate this work. Add bullets for
+the paired-evaluable denominator, the non-positive \(T_i\) count, and whether
+the proportional-scaling assumption was checked.
+
+- [ ] **Step 6: Verify the guide against the code**
+
+For each numbered claim added in Step 5, confirm the behaviour exists:
+
+```bash
+Rscript -e 'pkgload::load_all("."); print(names(formals(plotSSEPpePower)))'
+Rscript -e 'pkgload::load_all("."); print(names(formals(sseComparison)))'
+Rscript -e 'pkgload::load_all("."); print(names(ppeSummary(fake_ppe_sse_object())))'
+```
+
+Expected: every argument and column named in the guide appears. A guide claim
+with no corresponding output is a defect in one or the other; resolve it rather
+than softening the wording.
+
+- [ ] **Step 7: Commit**
 
 ```bash
 git add docs/sse-technical-reference.md README.md vignettes/runSSE.Rmd NEWS.md _pkgdown.yml man NAMESPACE
