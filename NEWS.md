@@ -1,5 +1,40 @@
 # nlmixr2sse 0.1
 
+* `parameterSource = "covariance"` now draws OMEGA as well as THETA. Recent
+  `nlmixr2est` reports a joint fixed/random-effect covariance in `fit$cov`
+  (OMEGA entries named `om.<eta>` / `cov.<eta>.<eta>`), which previously made
+  this mode abort with "contains theta name ... not present in `fit$theta`".
+* New `runSSEControl(covarianceDraw = )` selects how the draw is taken:
+  * `"independent_iw"` (default) draws THETA multivariate-Normal and OMEGA from
+    a mean-centred inverse-Wishart per OMEGA block, independently of each
+    other, with degrees of freedom moment-matched to the reported OMEGA
+    standard errors. The OMEGA draw is delegated to `rxode2::cvPost()`.
+  * `"joint"` instead draws THETA and OMEGA **together** from `fit$cov` on a
+    log-Cholesky-transformed scale, incorporating the estimated THETA/OMEGA
+    covariance through a first-order delta approximation.
+
+  Both give positive-definite OMEGA draws. **Neither implements NONMEM's
+  `$PRIOR NWPRI`, and neither claims PsN parity.**
+* `"joint"` uses covariance information `"independent_iw"` discards, but its
+  non-linear back-transform inflates OMEGA means by roughly
+  `exp(SE^2 / (2 * Omega^2))` — about 2% at 20% relative standard error, but
+  65% at 100% — so it is opt-in rather than the default. New
+  `runSSEControl(omegaRseWarn = )` (default `0.5`) warns when a drawn OMEGA
+  variance's relative standard error exceeds the threshold.
+* OMEGA blocks are drawn only when `fit$cov` covers every declared element of
+  the block. A block containing a fixed or uncovered element is held entirely
+  at its fitted values and reported in the run's parameter partition. A
+  theta-only `fit$cov` (for example from `foceiControl(covFull = FALSE)`) is
+  supported: thetas are drawn and all OMEGA is held fixed.
+* **Reproducibility note:** because OMEGA now varies between replicates,
+  `parameterSource = "covariance"` runs will not reproduce results from earlier
+  versions at the same seed. The two `covarianceDraw` modes also differ from
+  each other at the same seed, so the mode is recorded in `run_info` and
+  checked when a run is resumed.
+* Residual-error uncertainty was already included and is unchanged: in nlmixr2
+  residual parameters are thetas, so they are covered by the THETA draw.
+  THETA draws remain unconstrained, so a bounded theta or a residual-error
+  standard deviation can still be drawn outside its valid range.
 * `runSSEControl()` gains `rxThreads`, which sets how many rxode2 threads each
   parallel worker may use. It defaults to `"auto"`, dividing the machine's
   cores among the workers. Parallel SSE runs previously aborted at worker

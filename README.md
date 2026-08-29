@@ -94,8 +94,39 @@ Use `samples = 50` for a quick example. Real studies usually use `100` to
 | Mode | One-line example | Notes |
 | --- | --- | --- |
 | `fixed` | `runSSE(fit, samples = 50, seed = 42)` | Reuses the fitted point estimates for every replicate. |
-| `covariance` | `runSSE(fit, samples = 50, seed = 42, control = runSSEControl(parameterSource = "covariance"))` | Draws theta values from `fit$cov`; OMEGA and SIGMA stay fixed. |
+| `covariance` | `runSSE(fit, samples = 50, seed = 42, control = runSSEControl(parameterSource = "covariance"))` | Draws THETA from `fit$cov` and OMEGA from a mean-centred inverse-Wishart per block. Residual error is drawn with the thetas. Set `covarianceDraw = "joint"` to draw THETA and OMEGA together instead. |
 | `rawres` | `runSSE(fit, samples = 50, seed = 42, control = runSSEControl(parameterSource = "rawres", rawresInput = file.path(boot_dir, "raw_results.csv")))` | Uses one canonical raw-results row per replicate, typically from `nlmixr2boot::runBootstrap()`. |
+
+### Covariance draw modes
+
+`parameterSource = "covariance"` supports two draws, selected with
+`runSSEControl(covarianceDraw = )`:
+
+- **`"independent_iw"` (default)** — THETA is drawn multivariate-Normal from
+  its own sub-block of `fit$cov`; OMEGA is drawn from a mean-centred
+  inverse-Wishart per block, independently. Simple, and free of transformation
+  bias.
+- **`"joint"`** — THETA and OMEGA are drawn together from `fit$cov`, so the
+  covariance between them is incorporated. OMEGA is transformed to a
+  log-Cholesky scale for the draw, which makes every sampled matrix
+  positive-definite.
+
+Neither mode implements NONMEM's `$PRIOR NWPRI`.
+
+`"joint"` uses information the default discards: the THETA/OMEGA covariance is
+small in rich designs but substantial in the sparse ones SSE is usually used to
+plan. It is nevertheless opt-in, because its non-linear back-transform inflates
+OMEGA means by roughly `exp(SE^2 / (2 * Omega^2))` — about 2% at 20% relative
+standard error, but 65% at 100%. Poorly identified variance components sit at
+the high end of that range, so `"joint"` warns when a drawn OMEGA variance
+exceeds `omegaRseWarn` (default 50% relative standard error).
+
+An OMEGA block is drawn only when `fit$cov` covers all of its declared
+elements; otherwise the whole block stays at its fitted values. With a
+theta-only `fit$cov`, thetas are still drawn and all OMEGA is held fixed.
+
+THETA draws are unconstrained in both modes, so a bounded theta or a
+residual-error standard deviation can be drawn outside its valid range.
 
 ## Resume and recompute
 

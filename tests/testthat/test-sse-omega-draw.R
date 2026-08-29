@@ -1,0 +1,673 @@
+skip_on_cran()
+
+test_that("omegaCovName builds nlmixr2est-style names", {
+  expect_equal(.omegaCovName("eta.ka", "eta.ka"), "om.eta.ka")
+  expect_equal(.omegaCovName("eta.cl", "eta.ka"), "cov.eta.cl.eta.ka")
+})
+
+test_that("omegaEntryTable maps positions to names and fixed flags", {
+  info <- data.frame(
+    row = c(1L, 2L, 2L, 3L),
+    col = c(1L, 1L, 2L, 3L),
+    rowName = c("eta.ka", "eta.cl", "eta.cl", "eta.v"),
+    colName = c("eta.ka", "eta.ka", "eta.cl", "eta.v"),
+    fix = c(FALSE, FALSE, FALSE, TRUE),
+    stringsAsFactors = FALSE
+  )
+
+  tab <- .omegaEntryTable(info)
+
+  expect_equal(
+    tab$covName,
+    c("om.eta.ka", "cov.eta.cl.eta.ka", "om.eta.cl", "om.eta.v")
+  )
+  expect_equal(tab$diagonal, c(TRUE, FALSE, TRUE, TRUE))
+  expect_equal(tab$fix, c(FALSE, FALSE, FALSE, TRUE))
+})
+
+test_that("omegaEntryTable handles an empty omega", {
+  info <- data.frame(
+    row = integer(0), col = integer(0),
+    rowName = character(0), colName = character(0),
+    fix = logical(0), stringsAsFactors = FALSE
+  )
+  tab <- .omegaEntryTable(info)
+  expect_equal(nrow(tab), 0L)
+  expect_true(is.character(tab$covName))
+})
+
+test_that("omegaBlocks finds connected components", {
+  # eta1+eta2 correlated; eta3 alone
+  tab <- data.frame(
+    row = c(1L, 2L, 2L, 3L),
+    col = c(1L, 1L, 2L, 3L),
+    diagonal = c(TRUE, FALSE, TRUE, TRUE),
+    stringsAsFactors = FALSE
+  )
+  expect_equal(.omegaBlocks(tab, nEta = 3L), list(c(1L, 2L), 3L))
+})
+
+test_that("omegaBlocks treats a fully diagonal omega as 1x1 blocks", {
+  tab <- data.frame(
+    row = c(1L, 2L, 3L),
+    col = c(1L, 2L, 3L),
+    diagonal = c(TRUE, TRUE, TRUE),
+    stringsAsFactors = FALSE
+  )
+  expect_equal(.omegaBlocks(tab, nEta = 3L), list(1L, 2L, 3L))
+})
+
+test_that("omegaBlocks merges transitively linked etas", {
+  # 1-2 linked, 2-3 linked => one block of all three
+  tab <- data.frame(
+    row = c(1L, 2L, 2L, 3L, 3L),
+    col = c(1L, 1L, 2L, 2L, 3L),
+    diagonal = c(TRUE, FALSE, TRUE, FALSE, TRUE),
+    stringsAsFactors = FALSE
+  )
+  expect_equal(.omegaBlocks(tab, nEta = 3L), list(c(1L, 2L, 3L)))
+})
+
+test_that("omegaBlocks handles zero etas", {
+  tab <- data.frame(
+    row = integer(0), col = integer(0), diagonal = logical(0),
+    stringsAsFactors = FALSE
+  )
+  expect_equal(.omegaBlocks(tab, nEta = 0L), list())
+})
+
+test_that("drawableOmegaBlocks requires every declared entry to be covered", {
+  entries <- data.frame(
+    row = c(1L, 2L, 2L, 3L),
+    col = c(1L, 1L, 2L, 3L),
+    rowName = c("eta.a", "eta.b", "eta.b", "eta.c"),
+    colName = c("eta.a", "eta.a", "eta.b", "eta.c"),
+    fix = c(FALSE, FALSE, FALSE, FALSE),
+    covName = c("om.eta.a", "cov.eta.b.eta.a", "om.eta.b", "om.eta.c"),
+    diagonal = c(TRUE, FALSE, TRUE, TRUE),
+    stringsAsFactors = FALSE
+  )
+  blocks <- list(c(1L, 2L), 3L)
+
+  # everything covered -> both blocks drawable
+  res <- .drawableOmegaBlocks(
+    blocks, entries,
+    covNames = c("om.eta.a", "cov.eta.b.eta.a", "om.eta.b", "om.eta.c")
+  )
+  expect_equal(res$drawable, list(c(1L, 2L), 3L))
+  expect_length(res$held, 0L)
+
+  # off-diagonal missing -> the WHOLE correlated block is held, not part of it
+  res2 <- .drawableOmegaBlocks(
+    blocks, entries,
+    covNames = c("om.eta.a", "om.eta.b", "om.eta.c")
+  )
+  expect_equal(res2$drawable, list(3L))
+  expect_equal(res2$held[[1L]]$index, c(1L, 2L))
+  expect_match(res2$held[[1L]]$reason, "cov.eta.b.eta.a")
+})
+
+test_that("drawableOmegaBlocks holds a block containing a fixed element", {
+  entries <- data.frame(
+    row = c(1L, 2L, 2L),
+    col = c(1L, 1L, 2L),
+    rowName = c("eta.a", "eta.b", "eta.b"),
+    colName = c("eta.a", "eta.a", "eta.b"),
+    fix = c(FALSE, FALSE, TRUE),
+    covName = c("om.eta.a", "cov.eta.b.eta.a", "om.eta.b"),
+    diagonal = c(TRUE, FALSE, TRUE),
+    stringsAsFactors = FALSE
+  )
+  res <- .drawableOmegaBlocks(
+    list(c(1L, 2L)), entries,
+    covNames = c("om.eta.a", "cov.eta.b.eta.a")
+  )
+  expect_length(res$drawable, 0L)
+  expect_match(res$held[[1L]]$reason, "fixed")
+})
+
+test_that("drawableOmegaBlocks handles a theta-only covariance", {
+  entries <- data.frame(
+    row = 1L, col = 1L, rowName = "eta.a", colName = "eta.a",
+    fix = FALSE, covName = "om.eta.a", diagonal = TRUE,
+    stringsAsFactors = FALSE
+  )
+  res <- .drawableOmegaBlocks(list(1L), entries, covNames = c("tka", "tcl"))
+  expect_length(res$drawable, 0L)
+  expect_equal(res$held[[1L]]$index, 1L)
+})
+
+test_that("drawableOmegaBlocks reports both fixed and missing entries together", {
+  entries <- data.frame(
+    row = c(1L, 2L, 2L),
+    col = c(1L, 1L, 2L),
+    rowName = c("eta.a", "eta.b", "eta.b"),
+    colName = c("eta.a", "eta.a", "eta.b"),
+    fix = c(TRUE, FALSE, FALSE),
+    covName = c("om.eta.a", "cov.eta.b.eta.a", "om.eta.b"),
+    diagonal = c(TRUE, FALSE, TRUE),
+    stringsAsFactors = FALSE
+  )
+  # om.eta.a is fixed AND cov.eta.b.eta.a is absent from covNames
+  res <- .drawableOmegaBlocks(
+    list(c(1L, 2L)), entries,
+    covNames = "om.eta.b"
+  )
+
+  expect_length(res$drawable, 0L)
+  expect_match(res$held[[1L]]$reason, "fixed: om\\.eta\\.a")
+  expect_match(res$held[[1L]]$reason, "cov\\.eta\\.b\\.eta\\.a")
+})
+
+test_that("drawableOmegaBlocks aborts on a block/entries desync", {
+  entries <- data.frame(
+    row = 1L, col = 1L, rowName = "eta.a", colName = "eta.a",
+    fix = FALSE, covName = "om.eta.a", diagonal = TRUE,
+    stringsAsFactors = FALSE
+  )
+  # block 5 has no entries at all
+  err <- capture_sse_error(
+    .drawableOmegaBlocks(list(5L), entries, covNames = "om.eta.a")
+  )
+  expect_s3_class(err, "error")
+})
+
+test_that("omegaWishartSpec moment-matches nu from the reported SEs", {
+  omega0 <- matrix(c(0.30, 0.05, 0.05, 0.12), 2L, 2L)
+  se <- c(0.06, 0.03)
+  p <- 2L
+
+  spec <- .omegaWishartSpec(omega0, se)
+
+  expectedNu <- min(p + 3 + 2 * (diag(omega0) / se)^2)
+  expect_equal(spec$nu, expectedNu)
+  # the spec carries the fitted block; cvPost pre-scaling happens at draw time
+  expect_equal(spec$omega0, omega0)
+  expect_equal(spec$p, p)
+})
+
+test_that("omegaWishartSpec picks the minimum (widest-marginal) nu", {
+  omega0 <- diag(c(0.30, 0.12))
+  # second element has the relatively larger SE => smaller nu => binding
+  spec <- .omegaWishartSpec(omega0, c(0.01, 0.06))
+  nuEach <- 2L + 3 + 2 * (diag(omega0) / c(0.01, 0.06))^2
+  expect_equal(spec$nu, min(nuEach))
+})
+
+test_that("omegaWishartSpec ignores unusable SEs", {
+  omega0 <- diag(c(0.30, 0.12))
+  # NA SE on the second element => nu comes from the first alone
+  spec <- .omegaWishartSpec(omega0, c(0.06, NA_real_))
+  expect_equal(spec$nu, 2L + 3 + 2 * (0.30 / 0.06)^2)
+})
+
+test_that("omegaWishartSpec returns NULL when no SE is usable", {
+  omega0 <- diag(c(0.30, 0.12))
+  expect_null(.omegaWishartSpec(omega0, c(NA_real_, NA_real_)))
+  expect_null(.omegaWishartSpec(omega0, c(0, 0)))
+})
+
+test_that("omegaWishartSpec rejects a degenerate variance", {
+  omega0 <- diag(c(0, 0.12))
+  err <- capture_sse_error(.omegaWishartSpec(omega0, c(0.06, 0.03)))
+  expect_s3_class(err, "error")
+})
+
+test_that("omegaWishartSpec names the offending eta in the bad-variance abort", {
+  omega0 <- diag(c(0, 0.12))
+  dimnames(omega0) <- list(c("eta.ka", "eta.cl"), c("eta.ka", "eta.cl"))
+  err <- capture_sse_error(.omegaWishartSpec(omega0, c(0.06, 0.03)))
+  expect_s3_class(err, "error")
+  expect_match(conditionMessage(err), "eta.ka", fixed = TRUE)
+})
+
+test_that("drawOmegaBlock returns a positive-definite symmetric matrix", {
+  omega0 <- matrix(c(0.30, 0.05, 0.05, 0.12), 2L, 2L)
+  spec <- .omegaWishartSpec(omega0, c(0.06, 0.03))
+
+  set.seed(1234)
+  drawn <- .drawOmegaBlock(spec)
+
+  expect_equal(dim(drawn), c(2L, 2L))
+  expect_equal(drawn, t(drawn))
+  expect_true(all(eigen(drawn, symmetric = TRUE, only.values = TRUE)$values > 0))
+})
+
+test_that("drawOmegaBlock recovers the target mean and binding SE", {
+  omega0 <- matrix(c(0.30, 0.05, 0.05, 0.12), 2L, 2L)
+  targetSe <- c(0.06, 0.03)
+  spec <- .omegaWishartSpec(omega0, targetSe)
+
+  set.seed(99)
+  draws <- vapply(seq_len(4000L), function(i) diag(.drawOmegaBlock(spec)),
+                  numeric(2L))
+
+  # E[Omega] == Omega0 for both elements
+  expect_equal(rowMeans(draws), diag(omega0), tolerance = 0.02)
+
+  # the binding (minimum-nu) element recovers its reported SE; here that is
+  # element 2, whose SE is relatively largest
+  closed <- sqrt(2 * diag(omega0)^2 / (spec$nu - spec$p - 3))
+  expect_equal(apply(draws, 1L, stats::sd), closed, tolerance = 0.02)
+})
+
+test_that("drawOmega only touches the blocks it is given", {
+  omega0 <- diag(c(0.30, 0.12))
+  dimnames(omega0) <- list(c("eta.a", "eta.b"), c("eta.a", "eta.b"))
+
+  set.seed(7)
+  # Only block 1 is passed, as `.drawableOmegaBlocks()$drawable` would supply.
+  # Block 2 is absent from the list and must therefore keep its fitted value.
+  # NOTE: do NOT pass an undrawable block here to see what happens -- the
+  # contract is that filtering happened upstream, and testing the unfiltered
+  # case would encode behaviour callers must never rely on.
+  out <- .drawOmega(
+    omega0,
+    blocks = list(1L),
+    se = c(0.06, NA_real_)
+  )
+
+  expect_equal(dimnames(out), dimnames(omega0))
+  expect_equal(out[2L, 2L], 0.12)
+  expect_false(identical(out[1L, 1L], 0.30))
+  expect_equal(out[1L, 2L], 0)
+})
+
+test_that("drawOmega keeps a drawable block whose SE is unusable", {
+  # A block can pass coverage (all entries present and unfixed) yet still have
+  # a numerically unusable SE, so no nu can be moment-matched. Coverage and
+  # usability are distinct conditions; this block stays at its fitted value.
+  omega0 <- matrix(0.30, 1L, 1L, dimnames = list("eta.a", "eta.a"))
+  out <- .drawOmega(omega0, blocks = list(1L), se = NA_real_)
+  expect_equal(out[1L, 1L], 0.30)
+})
+
+test_that("alignedCovariance partitions theta and omega entries", {
+  nm <- c("tka", "tcl", "om.eta.ka", "cov.eta.cl.eta.ka", "om.eta.cl")
+  cov <- diag(c(0.04, 0.09, 0.01, 0.002, 0.005))
+  dimnames(cov) <- list(nm, nm)
+
+  omega <- matrix(c(0.3, 0.02, 0.02, 0.2), 2L, 2L)
+  dimnames(omega) <- list(c("eta.ka", "eta.cl"), c("eta.ka", "eta.cl"))
+
+  fit <- list(
+    theta = c(tka = 0.45, tcl = 1.0),
+    omega = omega,
+    cov = cov,
+    ui = list(iniDf = data.frame(
+      name = c("tka", "tcl", "eta.ka", "(eta.ka,eta.cl)", "eta.cl"),
+      ntheta = c(1L, 2L, NA, NA, NA),
+      neta1 = c(NA, NA, 1L, 2L, 2L),
+      neta2 = c(NA, NA, 1L, 1L, 2L),
+      fix = rep(FALSE, 5L),
+      stringsAsFactors = FALSE
+    ))
+  )
+
+  aligned <- .alignedCovariance(fit)
+
+  expect_equal(aligned$drawNames, c("tka", "tcl"))
+  expect_equal(dim(aligned$cov), c(2L, 2L))
+  expect_equal(aligned$omegaSe[["eta.ka"]], sqrt(0.01))
+  expect_equal(aligned$omegaSe[["eta.cl"]], sqrt(0.005))
+})
+
+test_that("alignedCovariance no longer aborts on omega names", {
+  nm <- c("tka", "om.eta.ka")
+  cov <- diag(c(0.04, 0.01))
+  dimnames(cov) <- list(nm, nm)
+  omega <- matrix(0.3, 1L, 1L, dimnames = list("eta.ka", "eta.ka"))
+
+  fit <- list(
+    theta = c(tka = 0.45),
+    omega = omega,
+    cov = cov,
+    ui = list(iniDf = data.frame(
+      name = c("tka", "eta.ka"),
+      ntheta = c(1L, NA),
+      neta1 = c(NA, 1L),
+      neta2 = c(NA, 1L),
+      fix = c(FALSE, FALSE),
+      stringsAsFactors = FALSE
+    ))
+  )
+
+  expect_silent(aligned <- .alignedCovariance(fit))
+  expect_equal(aligned$drawNames, "tka")
+})
+
+test_that("alignedCovariance still rejects a genuinely unknown name", {
+  nm <- c("tka", "mystery")
+  cov <- diag(c(0.04, 0.01))
+  dimnames(cov) <- list(nm, nm)
+
+  fit <- list(
+    theta = c(tka = 0.45),
+    omega = matrix(numeric(0), 0L, 0L),
+    cov = cov,
+    ui = list(iniDf = data.frame(
+      name = "tka", ntheta = 1L, neta1 = NA_integer_, neta2 = NA_integer_,
+      fix = FALSE, stringsAsFactors = FALSE
+    ))
+  )
+
+  err <- capture_sse_error(.alignedCovariance(fit))
+  expect_s3_class(err, "error")
+  expect_match(conditionMessage(err), "mystery")
+})
+
+test_that("alignedCovariance reaches ui on a fit exposing it only via $", {
+  # Real nlmixr2 fits have a $.nlmixr2FitCore method but NO [[ method, so
+  # fit[["ui"]] returns NULL silently. A plain-list fixture cannot detect that
+  # difference -- this one can.
+  ui <- list(iniDf = data.frame(
+    name = c("tka", "eta.ka"),
+    ntheta = c(1L, NA),
+    neta1 = c(NA, 1L),
+    neta2 = c(NA, 1L),
+    fix = c(FALSE, FALSE),
+    stringsAsFactors = FALSE
+  ))
+
+  nm <- c("tka", "om.eta.ka")
+  cov <- diag(c(0.04, 0.01))
+  dimnames(cov) <- list(nm, nm)
+
+  inner <- list(
+    theta = c(tka = 0.45),
+    omega = matrix(0.3, 1L, 1L, dimnames = list("eta.ka", "eta.ka")),
+    cov = cov
+  )
+
+  fit <- structure(list(), class = "sseDollarOnlyFit")
+  attr(fit, "inner") <- inner
+  attr(fit, "ui") <- ui
+
+  # $ resolves ui; [[ deliberately does not, exactly like a real fit
+  registerS3method(
+    "$", "sseDollarOnlyFit",
+    function(x, name) {
+      if (identical(name, "ui")) return(attr(x, "ui"))
+      attr(x, "inner")[[name]]
+    },
+    envir = environment()
+  )
+
+  aligned <- .alignedCovariance(fit)
+
+  expect_equal(aligned$drawNames, "tka")
+  expect_equal(unname(aligned$omegaSe[["eta.ka"]]), sqrt(0.01))
+  expect_equal(nrow(aligned$omegaEntries), 1L)
+})
+
+test_that("warnWeakOmega fires only above the threshold", {
+  omega0 <- diag(c(0.30, 0.30))
+  dimnames(omega0) <- list(c("eta.a", "eta.b"), c("eta.a", "eta.b"))
+
+  # RSE 0.20 and 0.20 -- both below 0.5, silent
+  expect_silent(
+    .warnWeakOmega(omega0, se = c(0.06, 0.06), index = 1:2, threshold = 0.5,
+                   mode = "independent_iw")
+  )
+
+  # RSE exactly at the threshold -- boundary is NOT "above", so still silent
+  expect_silent(
+    .warnWeakOmega(omega0, se = c(0.15, 0.06), index = 1:2, threshold = 0.5,
+                   mode = "independent_iw")
+  )
+
+  # RSE 0.667 on eta.a -- above, warns and NAMES the offending eta
+  expect_warning(
+    .warnWeakOmega(omega0, se = c(0.20, 0.06), index = 1:2, threshold = 0.5,
+                   mode = "independent_iw"),
+    "eta\\.a"
+  )
+})
+
+test_that("warnWeakOmega reports the mode-specific consequence", {
+  omega0 <- matrix(0.30, 1L, 1L, dimnames = list("eta.a", "eta.a"))
+
+  # joint, 1x1: exp(SE^2 / (2*omega^2)) is exact here, so claim the inflation
+  w <- tryCatch(
+    .warnWeakOmega(omega0, se = 0.30, index = 1L, threshold = 0.5,
+                   mode = "joint"),
+    warning = function(x) conditionMessage(x)
+  )
+  expect_match(w, "expected mean inflation")
+
+  # independent_iw: report the resulting nu instead
+  w2 <- tryCatch(
+    .warnWeakOmega(omega0, se = 0.30, index = 1L, threshold = 0.5,
+                   mode = "independent_iw"),
+    warning = function(x) conditionMessage(x)
+  )
+  expect_match(w2, "nu")
+})
+
+test_that("warnWeakOmega calls the joint figure a proxy for p > 1", {
+  # In a correlated block the diagonal is a sum of squared Cholesky elements,
+  # so the scalar formula is no longer exact and must not be presented as the
+  # actual inflation.
+  omega0 <- matrix(c(0.30, 0.05, 0.05, 0.30), 2L, 2L,
+                   dimnames = list(c("eta.a", "eta.b"), c("eta.a", "eta.b")))
+  w <- tryCatch(
+    .warnWeakOmega(omega0, se = c(0.30, 0.06), index = 1:2, threshold = 0.5,
+                   mode = "joint"),
+    warning = function(x) conditionMessage(x)
+  )
+  expect_match(w, "proxy")
+  expect_no_match(w, "expected mean inflation")
+})
+
+test_that("warnWeakOmega ignores unusable standard errors", {
+  omega0 <- matrix(0.30, 1L, 1L, dimnames = list("eta.a", "eta.a"))
+  expect_silent(
+    .warnWeakOmega(omega0, se = NA_real_, index = 1L, threshold = 0.5,
+                   mode = "joint")
+  )
+  expect_silent(
+    .warnWeakOmega(omega0, se = 0, index = 1L, threshold = 0.5, mode = "joint")
+  )
+})
+
+test_that("covariance parameter sets draw both theta and omega", {
+  tmp <- tempfile("nlmixr2sse-covdraw-")
+  dir.create(tmp)
+  on.exit(unlink(tmp, recursive = TRUE, force = TRUE), add = TRUE)
+  nlmixr2utils::withRunSeed(tmp, seed = 11, prefix = "sse")
+
+  nm <- c("tka", "om.eta.ka")
+  cov <- diag(c(0.04, 0.001))
+  dimnames(cov) <- list(nm, nm)
+  omega <- matrix(0.3, 1L, 1L, dimnames = list("eta.ka", "eta.ka"))
+
+  fit <- list(
+    theta = c(tka = 0.45),
+    omega = omega,
+    sigma = matrix(numeric(0), 0L, 0L),
+    cov = cov,
+    ui = list(iniDf = data.frame(
+      name = c("tka", "eta.ka"),
+      ntheta = c(1L, NA),
+      neta1 = c(NA, 1L),
+      neta2 = c(NA, 1L),
+      fix = c(FALSE, FALSE),
+      stringsAsFactors = FALSE
+    ))
+  )
+
+  schema <- list(
+    thetaCols = "tka",
+    omegaCols = "omega(eta.ka,eta.ka)",
+    sigmaCols = character(0)
+  )
+
+  # NOTE: the loop below runs BOTH modes. Do not collapse it to the default
+  # mode only -- a theta-only regression in "joint" is invisible from
+  # "independent_iw" and vice versa.
+
+  # both modes must draw theta AND omega
+  for (mode in c("joint", "independent_iw")) {
+    res <- .resolveCovarianceParameterSets(
+      fit = fit,
+      samples = 3L,
+      outputDir = tmp,
+      schema = schema,
+      control = runSSEControl(
+        parameterSource = "covariance",
+        covarianceDraw = mode
+      )
+    )
+
+    expect_length(res$records, 3L)
+
+    thetas <- vapply(res$records, function(r) unname(r$theta[["tka"]]), numeric(1))
+    omegas <- vapply(res$records, function(r) r$omega[1L, 1L], numeric(1))
+
+    # both vary across replicates
+    expect_gt(length(unique(thetas)), 1L)
+    expect_gt(length(unique(omegas)), 1L)
+    # every drawn omega is positive
+    expect_true(all(omegas > 0), info = mode)
+    # the partition names omega as drawn, not fixed
+    expect_true(
+      "omega(eta.ka,eta.ka)" %in% res$info$parameterPartition$drawn,
+      info = mode
+    )
+    # the run record states which mode produced the draws
+    expect_equal(res$info$covarianceDraw, mode)
+  }
+})
+
+test_that("held OMEGA blocks and their reasons survive in res$info", {
+  # A 2x2 block with a missing off-diagonal: coverage holds the whole block,
+  # and the run record must be able to say why after the run has finished.
+  tmp <- tempfile("nlmixr2sse-held-")
+  dir.create(tmp)
+  on.exit(unlink(tmp, recursive = TRUE, force = TRUE), add = TRUE)
+  nlmixr2utils::withRunSeed(tmp, seed = 3, prefix = "sse")
+
+  nm <- c("tka", "om.eta.a", "om.eta.b")   # cov.eta.b.eta.a deliberately absent
+  cov <- diag(c(0.04, 0.001, 0.001))
+  dimnames(cov) <- list(nm, nm)
+  omega <- matrix(c(0.30, 0.05, 0.05, 0.12), 2L, 2L,
+                  dimnames = list(c("eta.a", "eta.b"), c("eta.a", "eta.b")))
+
+  fit <- list(
+    theta = c(tka = 0.45),
+    omega = omega,
+    sigma = matrix(numeric(0), 0L, 0L),
+    cov = cov,
+    ui = list(iniDf = data.frame(
+      name = c("tka", "eta.a", "(eta.a,eta.b)", "eta.b"),
+      ntheta = c(1L, NA, NA, NA),
+      neta1 = c(NA, 1L, 2L, 2L),
+      neta2 = c(NA, 1L, 1L, 2L),
+      fix = c(FALSE, FALSE, FALSE, FALSE),
+      stringsAsFactors = FALSE
+    ))
+  )
+
+  res <- .resolveCovarianceParameterSets(
+    fit = fit,
+    samples = 2L,
+    outputDir = tmp,
+    schema = list(
+      thetaCols = "tka",
+      omegaCols = c("omega(eta.a,eta.a)", "omega(eta.b,eta.a)",
+                    "omega(eta.b,eta.b)"),
+      sigmaCols = character(0)
+    ),
+    control = runSSEControl(parameterSource = "covariance")
+  )
+
+  held <- res$info$parameterPartition$heldOmegaBlocks
+  expect_length(held, 1L)
+  expect_setequal(held[[1L]]$etas, c("eta.a", "eta.b"))
+  expect_match(held[[1L]]$reason, "cov\\.eta\\.b\\.eta\\.a")
+
+  # and the block really did stay fitted
+  omegas <- vapply(res$records, function(r) r$omega[1L, 1L], numeric(1))
+  expect_equal(omegas, rep(0.30, 2L))
+})
+
+test_that("theta-only fit$cov still draws thetas in BOTH modes", {
+  # foceiControl(covFull = FALSE), and the installer's fallback when the full
+  # covariance is unavailable, both produce a theta-only fit$cov. Thetas must
+  # still be drawn; all OMEGA is held. Guards against gating the whole draw on
+  # OMEGA drawability.
+  nm <- c("tka", "tcl")
+  cov <- diag(c(0.04, 0.09))
+  dimnames(cov) <- list(nm, nm)
+  omega <- matrix(0.3, 1L, 1L, dimnames = list("eta.ka", "eta.ka"))
+
+  fit <- list(
+    theta = c(tka = 0.45, tcl = 1.0),
+    omega = omega,
+    sigma = matrix(numeric(0), 0L, 0L),
+    cov = cov,
+    ui = list(iniDf = data.frame(
+      name = c("tka", "tcl", "eta.ka"),
+      ntheta = c(1L, 2L, NA),
+      neta1 = c(NA, NA, 1L),
+      neta2 = c(NA, NA, 1L),
+      fix = c(FALSE, FALSE, FALSE),
+      stringsAsFactors = FALSE
+    ))
+  )
+
+  schema <- list(
+    thetaCols = c("tka", "tcl"),
+    omegaCols = "omega(eta.ka,eta.ka)",
+    sigmaCols = character(0)
+  )
+
+  for (mode in c("independent_iw", "joint")) {
+    tmp <- tempfile(paste0("nlmixr2sse-thetaonly-", mode, "-"))
+    dir.create(tmp)
+    on.exit(unlink(tmp, recursive = TRUE, force = TRUE), add = TRUE)
+    nlmixr2utils::withRunSeed(tmp, seed = 5, prefix = "sse")
+
+    res <- .resolveCovarianceParameterSets(
+      fit = fit,
+      samples = 4L,
+      outputDir = tmp,
+      schema = schema,
+      control = runSSEControl(
+        parameterSource = "covariance",
+        covarianceDraw = mode
+      )
+    )
+
+    thetas <- vapply(res$records, function(r) unname(r$theta[["tka"]]), numeric(1))
+    omegas <- vapply(res$records, function(r) r$omega[1L, 1L], numeric(1))
+
+    # thetas ARE drawn even with no drawable OMEGA block
+    expect_gt(length(unique(signif(thetas, 8))), 1L)
+    # OMEGA is held at its fitted value
+    expect_equal(omegas, rep(0.3, 4L), info = mode)
+    # and reported as fixed, not drawn
+    expect_true("tka" %in% res$info$parameterPartition$drawn, info = mode)
+    expect_true(
+      "omega(eta.ka,eta.ka)" %in% res$info$parameterPartition$fixed,
+      info = mode
+    )
+  }
+})
+
+test_that("drawableOmegaBlocks holds all blocks when no entry info exists", {
+  # A ui whose iniDf carries no OMEGA rows yields an empty entry table, while
+  # nEta still comes from fit$omega. That is missing information, not a
+  # desync: coverage cannot be verified, so every block is held.
+  empty <- data.frame(
+    row = integer(0), col = integer(0),
+    rowName = character(0), colName = character(0),
+    fix = logical(0), covName = character(0), diagonal = logical(0),
+    stringsAsFactors = FALSE
+  )
+  res <- .drawableOmegaBlocks(list(1L), empty, covNames = c("tka", "tcl"))
+
+  expect_length(res$drawable, 0L)
+  expect_length(res$held, 1L)
+  expect_match(res$held[[1L]]$reason, "no OMEGA entry information")
+})

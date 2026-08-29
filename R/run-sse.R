@@ -211,6 +211,24 @@ runSSE <- function(
         "i" = "The recorded {.field rxThreads} keeps the original value."
       ))
     }
+    if (identical(control$parameterSource, "covariance")) {
+      recorded_draw <- existing_run_info$covarianceDraw
+      if (is.null(recorded_draw) || is.na(recorded_draw)) {
+        # Legacy directory: the mode is genuinely unknown, so do not phrase this
+        # as a mismatch against "NA". Same NULL-or-NA legacy test as the resume
+        # path, but a warning rather than an abort, because add-models
+        # simulates nothing new.
+        cli::cli_warn(c(
+          "!" = "The original run predates {.arg covarianceDraw} tracking, so the draw mode behind its saved datasets is unknown.",
+          "i" = "Those datasets are reused unchanged; the recorded {.field covarianceDraw} stays unset."
+        ))
+      } else if (!identical(recorded_draw, control$covarianceDraw)) {
+        cli::cli_warn(c(
+          "!" = "The original run used {.arg covarianceDraw = {recorded_draw}}, but this add-models run requests {.arg covarianceDraw = {control$covarianceDraw}}.",
+          "i" = "Saved simulated datasets are reused unchanged; the recorded {.field covarianceDraw} keeps the original value."
+        ))
+      }
+    }
     alternatives <- .selectAddModelAlternatives(alternatives, existing_run_info)
   } else if (!is.null(existing_run_info)) {
     .validateResumeRequest(
@@ -288,7 +306,8 @@ runSSE <- function(
   }
   if (identical(control$parameterSource, "covariance")) {
     cli::cli_inform(c(
-      "i" = "Thetas are drawn from {.field fit$cov}; OMEGA and SIGMA stay at the fitted point estimates."
+      "i" = "Parameters are drawn from {.field fit$cov} ({.field {control$covarianceDraw}} draw).",
+      "i" = "OMEGA blocks without full covariance coverage stay at their fitted values."
     ))
   }
   cli::cli_rule()
@@ -317,6 +336,10 @@ runSSE <- function(
     existing_run_info %||% list(),
     resolved_rx_threads,
     control$addModels
+  )
+  run_info$covarianceDraw <- .recordedCovarianceDraw(
+    existing_run_info %||% list(),
+    control
   )
   run_info$runDirMode <- run_dir$mode
   run_info$alternativeLabels <- vapply(
@@ -424,13 +447,23 @@ runSSE <- function(
     )
     pending_data <- integer(0)
   } else {
-    parameter_source <- .resolveSimulationParameters(
+    # This is the SECOND call to .resolveSimulationParameters() in runSSE() --
+    # the first, above, harvests $info for run_info and always runs on a
+    # non-addModels path. Both calls are deterministic and produce identical
+    # diagnostics, so without suppression every one is emitted twice.
+    # Suppressing the second (rather than the first) keeps exactly one copy on a
+    # fresh run, on a full resume, and on addModels alike.
+    #
+    # BOTH suppressors are needed: the weak-identification diagnostic is a
+    # warning, but the "OMEGA block held at its fitted values" diagnostic is a
+    # cli_inform() message, which suppressWarnings() does not catch.
+    parameter_source <- suppressMessages(suppressWarnings(.resolveSimulationParameters(
       fit = fit,
       samples = samples,
       control = control,
       outputDir = abs_output_dir,
       schema = sim_schema
-    )
+    )))
     sim_param_sets <- parameter_source$records
     pending_data <- as.integer(
       nlmixr2utils::pendingTasks(sample_keys, data_cache$keys())

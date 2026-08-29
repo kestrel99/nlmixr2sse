@@ -11,6 +11,22 @@
 #' @param refOfv Optional reference OFV override.
 #' @param parameterSource Source of simulation parameters: fixed fit values,
 #'   canonical raw-results input, or multivariate-normal covariance draws.
+#' @param covarianceDraw How `parameterSource = "covariance"` draws parameters.
+#'   `"independent_iw"` (the default) draws THETA multivariate-Normal and OMEGA
+#'   from a mean-centred inverse-Wishart per OMEGA block, independently of each
+#'   other. `"joint"` instead draws THETA and OMEGA together from `fit$cov` on a
+#'   log-Cholesky-transformed scale, incorporating the estimated THETA/OMEGA
+#'   covariance through a first-order delta approximation. Both give
+#'   positive-definite OMEGA draws.
+#'
+#'   `"joint"` uses information `"independent_iw"` discards, but its non-linear
+#'   back-transform inflates OMEGA means by roughly `exp(SE^2 / (2 * Omega^2))`
+#'   — about 2% at 20% relative standard error, but 65% at 100% — so it is
+#'   opt-in rather than the default. Neither mode implements NONMEM's
+#'   `$PRIOR NWPRI`, and neither claims PsN parity.
+#' @param omegaRseWarn Relative-standard-error threshold above which a drawn
+#'   OMEGA variance triggers a weak-identification warning naming the block and
+#'   eta. Defaults to `0.5`.
 #' @param rawresInput Optional raw-results input path or object for
 #'   `parameterSource = "rawres"`. This is required when
 #'   `parameterSource = "rawres"`.
@@ -49,6 +65,8 @@ runSSEControl <- function(
   estimateSimulation = TRUE,
   refOfv = NULL,
   parameterSource = c("fixed", "rawres", "covariance"),
+  covarianceDraw = c("independent_iw", "joint"),
+  omegaRseWarn = 0.5,
   rawresInput = NULL,
   offsetRawres = 1L,
   inFilter = NULL,
@@ -66,6 +84,9 @@ runSSEControl <- function(
   overwrite = FALSE
 ) {
   parameterSource <- match.arg(parameterSource)
+  covarianceDrawMissing <- missing(covarianceDraw)
+  covarianceDraw <- match.arg(covarianceDraw)
+  omegaRseWarnMissing <- missing(omegaRseWarn)
 
   checkmate::assertFlag(estimateSimulation)
   if (!is.null(refOfv)) {
@@ -79,6 +100,12 @@ runSSEControl <- function(
   )
   checkmate::assertFlag(randomEstimationInits)
   checkmate::assertFlag(updateFix)
+  checkmate::assertNumber(
+    omegaRseWarn,
+    lower = 0,
+    finite = TRUE,
+    .var.name = "omegaRseWarn"
+  )
   if (!is.null(appendColumns)) {
     checkmate::assertCharacter(
       appendColumns,
@@ -124,6 +151,16 @@ runSSEControl <- function(
       "{.arg inFilter} requires {.arg parameterSource = \"rawres\"}."
     )
   }
+  if (!covarianceDrawMissing && parameterSource != "covariance") {
+    .abortSSE(
+      "{.arg covarianceDraw} requires {.arg parameterSource = \"covariance\"}."
+    )
+  }
+  if (!omegaRseWarnMissing && parameterSource != "covariance") {
+    .abortSSE(
+      "{.arg omegaRseWarn} requires {.arg parameterSource = \"covariance\"}."
+    )
+  }
   if (!is.null(appendColumns) && isTRUE(addModels)) {
     .abortSSE(
       "{.arg appendColumns} cannot be used together with {.arg addModels}."
@@ -140,6 +177,8 @@ runSSEControl <- function(
       estimateSimulation = estimateSimulation,
       refOfv = refOfv,
       parameterSource = parameterSource,
+      covarianceDraw = covarianceDraw,
+      omegaRseWarn = omegaRseWarn,
       rawresInput = rawresInput,
       offsetRawres = as.integer(offsetRawres),
       inFilter = inFilter,

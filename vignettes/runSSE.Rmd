@@ -200,8 +200,13 @@ summary(sse_recomputed)
 ## Uncertainty modes
 
 `parameterSource = "covariance"` draws theta values from `fit$cov` for each
-replicate. In `nlmixr2`, that means theta-only uncertainty: OMEGA and SIGMA
-stay fixed at the fitted point estimates.
+replicate, and also draws OMEGA -- from a mean-centred inverse-Wishart per
+block by default, or jointly with theta on a log-Cholesky scale when
+`covarianceDraw = "joint"`. Residual error is drawn with the thetas because
+`nlmixr2` parameterizes it as ordinary theta values, not as a separate SIGMA
+block. An OMEGA block is drawn only when `fit$cov` covers all of its declared
+entries; otherwise that block stays fixed at its fitted value while covered
+thetas are still drawn.
 
 ```{r covariance-example, message = FALSE, warning = FALSE, eval = can_run}
 sse_cov <- runSSE(
@@ -216,10 +221,10 @@ sse_cov <- runSSE(
 )
 ```
 
-For full uncertainty in OMEGA and SIGMA as well, use
-`parameterSource = "rawres"` with a canonical raw-results file. The package
-ships a tiny bootstrap-style fixture so you can see the cross-package interface
-without running a bootstrap first.
+For uncertainty taken from an external bootstrap rather than the asymptotic
+covariance, use `parameterSource = "rawres"` with a canonical raw-results
+file. The package ships a tiny bootstrap-style fixture so you can see the
+cross-package interface without running a bootstrap first.
 
 ```{r rawres-path}
 bootstrap_rawres <- system.file(

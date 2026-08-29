@@ -163,6 +163,40 @@
     }
   }
 
+  if (identical(control$parameterSource, "covariance")) {
+    recordedDraw <- existingRunInfo$covarianceDraw
+    # NULL and NA both mean "legacy, mode unknown". NA specifically arises after
+    # an addModels run against a legacy directory, which records NA by design --
+    # without treating it as legacy here, that run would fall into the generic
+    # mismatch branch below and report the original mode as "NA".
+    if (is.null(recordedDraw) || is.na(recordedDraw)) {
+      # A covariance run with no recorded mode necessarily predates OMEGA
+      # drawing, so its existing replicates hold OMEGA at the fitted values.
+      # Appending OMEGA-varying replicates would put two simulation
+      # distributions in one study. This is NOT the rxThreads case, where the
+      # thread count is merely unknown but the draw is the same kind -- here the
+      # old behaviour is known and known to be incompatible. Abort.
+      .abortSSE(
+        paste0(
+          "This run directory predates {.arg covarianceDraw} tracking, so its ",
+          "existing replicates were simulated with OMEGA held at the fitted ",
+          "values. Resuming would append replicates that vary OMEGA, mixing two ",
+          "simulation distributions in one study. Use {.code restart = TRUE} to ",
+          "start a fresh run."
+        )
+      )
+    } else if (!identical(recordedDraw, control$covarianceDraw)) {
+      .abortSSE(
+        paste0(
+          "Existing run directory used {.arg covarianceDraw = {recordedDraw}}, ",
+          "but this run requests {.arg covarianceDraw = {control$covarianceDraw}}. ",
+          "The draw mode changes every simulated parameter set, so the replicates would not be comparable. ",
+          "Use {.code runSSEControl(covarianceDraw = \"{recordedDraw}\")} to resume, or {.code restart = TRUE} for a fresh run."
+        )
+      )
+    }
+  }
+
   existing_labels <- .existingModelLabels(existingRunInfo)
   if (
     length(existing_labels) > 0L &&
