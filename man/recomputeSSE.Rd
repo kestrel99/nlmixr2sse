@@ -17,7 +17,7 @@ recomputeSSE(
 
 \item{outFilter}{Optional raw-results filter applied before summary
 calculations. This accepts the same forms as
-\code{\link[nlmixr2utils:raw-results]{nlmixr2utils::setupRawResultsFilter()}}.}
+\code{\link[nlmixr2utils:setupRawResultsFilter]{nlmixr2utils::setupRawResultsFilter()}}.}
 
 \item{refOfv}{Optional OFV override used when recomputing the OFV summary.}
 
