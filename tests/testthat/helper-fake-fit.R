@@ -2,6 +2,18 @@
   x[[name]]
 }
 
+# The fake fit must claim `nlmixr2FitCore` to satisfy .validateSSEFit(), which
+# means nlmixr2est's `$.nlmixr2FitCore` is a candidate method for it -- and that
+# one assumes a real fit environment, so it errors on a plain list. Defining
+# `$.nlmixr2SSEFakeFit` here is not enough on its own: package code calling
+# `fit$theta` dispatches from inside the nlmixr2sse namespace, where a method
+# defined only in the test environment is invisible. nlmixr2est's method then
+# wins, errors, and callers that wrap field access in tryCatch (such as
+# .rawResultsSchemaForFit()) silently see NULL and build an empty schema.
+# Registering it puts the method in the S3 table so dispatch finds it wherever
+# the call originates.
+registerS3method("$", "nlmixr2SSEFakeFit", `$.nlmixr2SSEFakeFit`)
+
 fake_sse_fit <- function() {
   dummy_ui <- structure(
     list(iniDf = data.frame(stringsAsFactors = FALSE)),

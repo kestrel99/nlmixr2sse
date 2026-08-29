@@ -359,11 +359,12 @@ test_that("simulationRecord preserves row identifiers through rxSolve output", {
 
   schema <- .rawResultsSchemaForFit(ref_fit)
   ref_data <- .getFitData(ref_fit)
-  param_set <- list(
-    theta = ref_fit$theta,
-    omega = ref_fit$omega,
-    sigma = ref_fit$sigma
-  )
+  # Build the parameter set the way runSSE() does. A hand-rolled
+  # list(sigma = ref_fit$sigma) fails: residual error in nlmixr2 lives in the
+  # thetas, so `$sigma` on a real fit is numeric(0), and rxSolve() passes that
+  # straight to lotri(), which rejects it as a "bad matrix specification".
+  # .paramSetFromFit() normalizes absent omega/sigma to 0x0 matrices.
+  param_set <- .paramSetFromFit(ref_fit)
 
   rec <- .simulationRecord(
     sample = 1L,
@@ -855,19 +856,28 @@ test_that("runSSE supports raw-results and covariance parameter sources end to e
   rawres_tka <- rawres_tka[order(rawres_tka$replicate), , drop = FALSE]
   expect_equal(round(rawres_tka$value, 2), c(0.47, 0.43))
 
+  weak_omega_warned <- FALSE
   cov_res <- try(
     suppressMessages(
-      runSSE(
-        ref_fit,
-        alternativeModels = sseModel(alt_fit, label = "no_eta"),
-        samples = 2L,
-        seed = 456,
-        control = runSSEControl(
-          parameterSource = "covariance",
-          workers = 1L
+      withCallingHandlers(
+        runSSE(
+          ref_fit,
+          alternativeModels = sseModel(alt_fit, label = "no_eta"),
+          samples = 2L,
+          seed = 456,
+          control = runSSEControl(
+            parameterSource = "covariance",
+            workers = 1L
+          ),
+          outputDir = cov_out,
+          restart = TRUE
         ),
-        outputDir = cov_out,
-        restart = TRUE
+        warning = function(w) {
+          if (grepl("Weakly identified OMEGA", conditionMessage(w), fixed = TRUE)) {
+            weak_omega_warned <<- TRUE
+            invokeRestart("muffleWarning")
+          }
+        }
       )
     ),
     silent = TRUE
@@ -880,6 +890,10 @@ test_that("runSSE supports raw-results and covariance parameter sources end to e
   }
 
   expect_s3_class(cov_res, "nlmixr2SSE")
+  # theo_sd's eta.ka carries roughly 51% relative SE, just over the 0.5 default
+  # omegaRseWarn threshold, so the weak-identification diagnostic must reach the
+  # user through runSSE() and not only from .warnWeakOmega() in isolation.
+  expect_true(weak_omega_warned)
   # parameterPartition reports canonical raw-results names throughout -- the
   # same vocabulary as `fixed`, as `initialValues$parameter` below, and as the
   # rawres columns -- not nlmixr2's internal `fit$cov` rownames, which spell the

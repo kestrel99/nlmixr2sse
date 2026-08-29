@@ -41,3 +41,37 @@ test_that("sseModel validates labels", {
   expect_s3_class(err, "error")
   expect_match(conditionMessage(err), "letters")
 })
+
+test_that("mergeRawResultsSchemas emits no columns for a parameterless schema", {
+  # paste0() drops zero-length arguments instead of returning zero length, so
+  # paste0(character(0), ".se") is ".se". Without a guard, merging schemas that
+  # contribute no parameters produced a spurious ".se" column, and rows built
+  # from that schema had a column count no other schema could rbind against.
+  empty <- list(
+    thetaCols = character(0),
+    omegaCols = character(0),
+    sigmaCols = character(0)
+  )
+
+  merged <- .mergeRawResultsSchemas(list(empty, empty))
+
+  expect_equal(merged$seCols, character(0))
+  expect_false(".se" %in% merged$columns)
+  expect_equal(merged$columns, merged$baseCols)
+})
+
+test_that("mergeRawResultsSchemas still derives se columns when parameters exist", {
+  merged <- .mergeRawResultsSchemas(list(
+    list(
+      thetaCols = c("tka", "tcl"),
+      omegaCols = "omega(eta.ka,eta.ka)",
+      sigmaCols = character(0)
+    )
+  ))
+
+  expect_equal(
+    merged$seCols,
+    c("tka.se", "tcl.se", "omega(eta.ka,eta.ka).se")
+  )
+  expect_true(all(merged$seCols %in% merged$columns))
+})

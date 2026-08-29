@@ -312,8 +312,28 @@ runSSE <- function(
   }
   cli::cli_rule()
 
-  ref_data <- .getFitData(fit)
-  study_info <- .inferStudySampleInfo(ref_data)
+  # addModels reuses the saved simulation datasets -- the branch below sets
+  # `pending_data` empty, so .simulationRecord() never runs and `ref_data` is
+  # never used for simulation. It survives only as a fallback for the study
+  # metadata the original run already recorded. Requiring it unconditionally
+  # would block addModels on any reference fit that no longer carries its
+  # estimation data (reloaded from RDS, or stripped to save space), so recover
+  # it when we can and carry on without it when we cannot.
+  ref_data <- if (isTRUE(control$addModels)) {
+    tryCatch(.getFitData(fit), error = function(e) NULL)
+  } else {
+    .getFitData(fit)
+  }
+  study_info <- if (is.null(ref_data)) {
+    list(
+      studySampleSize = NA_integer_,
+      studySampleUnit = NA_character_,
+      studyIdColumn = NA_character_,
+      studyObservationCount = NA_integer_
+    )
+  } else {
+    .inferStudySampleInfo(ref_data)
+  }
 
   run_info <- existing_run_info %||% list()
   run_info$status <- "running"
