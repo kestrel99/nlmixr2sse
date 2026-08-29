@@ -465,19 +465,37 @@ Expected: FAIL, `could not find function ".resolveComparison"`.
   vapply(x$runInfo$fitSpecs %||% list(), `[[`, character(1), "label")
 }
 
+# One shared resolver. Duplicating this inline is what previously left the
+# post-resolution distinctness check missing from one of two call sites.
+.resolveModelToken <- function(value, simLabel) {
+  if (identical(value, "simulation")) simLabel else value
+}
+
 .resolveComparison <- function(x, comparison) {
   labels <- .knownModelLabels(x)
   sim <- .simulationLabel(x)
-  resolve1 <- function(value) if (identical(value, "simulation")) sim else value
 
-  comparison$full <- resolve1(comparison$full)
-  comparison$reduced <- resolve1(comparison$reduced)
+  comparison$full <- .resolveModelToken(comparison$full, sim)
+  comparison$reduced <- .resolveModelToken(comparison$reduced, sim)
 
   unknown <- setdiff(c(comparison$full, comparison$reduced), labels)
   if (length(unknown) > 0L) {
     .abortSSE(c(
       "Comparison {.val {comparison$label}} names unknown model{?s} {.val {unknown}}.",
       "i" = "Available labels: {.val {labels}}."
+    ))
+  }
+
+  # The constructor compares raw strings, so it cannot catch
+  # sseComparison(full = "<sim label>", reduced = "simulation"): both sides
+  # resolve to the same model. Left unchecked that yields a model compared
+  # against itself, every test statistic identically zero, and a meaningless
+  # PPE fit reported as if it were real.
+  if (identical(comparison$full, comparison$reduced)) {
+    .abortSSE(c(
+      "Comparison {.val {comparison$label}} resolves both members to {.val {comparison$full}}.",
+      "i" = "A model compared against itself has no degrees of freedom and no test statistic.",
+      "i" = "The {.val simulation} token resolves to {.val {sim}}."
     ))
   }
 
@@ -511,7 +529,8 @@ Expected: FAIL, `could not find function ".resolveComparison"`.
   out <- lapply(comparisons, function(cmp) .resolveComparison(x, cmp))
   labels <- vapply(out, `[[`, character(1), "label")
   if (anyDuplicated(labels) > 0L) {
-    .abortSSE("Comparison labels must be unique; {.val {labels[duplicated(labels)]}} repeats.")
+    repeated <- unique(labels[duplicated(labels)])
+    .abortSSE("Comparison labels must be unique; {.val {repeated}} {?repeats/repeat}.")
   }
   out
 }
@@ -548,7 +567,10 @@ an `sseComparison`, and persist normalised copies:
 
 ```r
   run_info$comparisons <- if (is.null(comparisons)) {
-    NULL
+    # Preserve, never wipe: a comparison is a reporting definition, so a resume
+    # or addModels call that omits the argument must keep what was recorded,
+    # exactly as parameterSourceInfo and the studySample* fields do.
+    existing_run_info$comparisons
   } else {
     if (inherits(comparisons, "sseComparison")) comparisons <- list(comparisons)
     lapply(comparisons, function(cmp) {
@@ -559,6 +581,39 @@ an `sseComparison`, and persist normalised copies:
     })
   }
 ```
+
+Validate the labels once the full fit-spec list is assembled, aborting on any
+that will not exist. Every label is knowable at this point — the simulation
+model plus every alternative, including those being added by `addModels` — so
+deferring the check to reporting time would let a typo persist silently through
+an entire run, which is the failure class this plan exists to remove. The
+reserved `"simulation"` token is resolved before checking.
+
+```r
+  .assertComparisonLabelsExist <- function(comparisons, labels, simLabel) {
+    named <- unlist(lapply(comparisons, function(cmp) {
+      resolve1 <- function(v) if (identical(v, "simulation")) simLabel else v
+      c(resolve1(cmp$full), resolve1(cmp$reduced))
+    }))
+    unknown <- setdiff(unique(named), labels)
+    if (length(unknown) > 0L) {
+      # Phrased to avoid subject-verb agreement entirely: cli's {?s} appends as
+      # the quantity grows, which is right for a noun but inverted for a verb
+      # ("name" for one, "names" for many is backwards).
+      .abortSSE(c(
+        "Unknown model{?s} in {.arg comparisons}: {.val {unknown}}.",
+        "i" = "Models in this run: {.val {labels}}.",
+        "i" = "Use {.val simulation} for the simulation model, or add the model to {.arg alternativeModels}."
+      ))
+    }
+  }
+```
+
+This check must run on **every** path that accepts `comparisons`, including the
+early return for an already-completed run directory. That path returns before
+the main body executes, so validating only in the main body silently discards
+the argument and lets a typo through with no error at all — the opposite of the
+documented contract.
 
 In `R/recompute-sse.R`, allow `comparisons` to replace `run_info$comparisons`
 without refitting, since a comparison is a reporting definition rather than an
