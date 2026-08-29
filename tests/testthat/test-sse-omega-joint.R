@@ -171,3 +171,89 @@ test_that("every joint draw is positive-definite", {
   }, logical(1))
   expect_true(all(ok))
 })
+
+test_that("log-Cholesky round-trips across a wide scale range", {
+  # OMEGA components span many orders of magnitude in practice. A fixed
+  # absolute finite-difference step cannot serve all of them, which is why the
+  # Jacobian step is relative.
+  for (scale in c(1e-8, 1e-4, 1e-1, 1e1, 1e2)) {
+    om <- matrix(c(1.0, 0.2, 0.2, 0.5), 2L, 2L) * scale
+    phi <- .omegaToPhi(om)
+    expect_equal(.phiToOmega(phi, 2L), om, tolerance = 1e-8,
+                 info = paste("scale", scale))
+  }
+})
+
+test_that("numericJacobian is full rank across a wide scale range", {
+  for (scale in c(1e-8, 1e-4, 1e-1, 1e1, 1e2)) {
+    om <- matrix(c(1.0, 0.2, 0.2, 0.5), 2L, 2L) * scale
+    j <- .numericJacobian(
+      function(w) .omegaToPhi(.vecToOmega(w, 2L)),
+      .omegaToVec(om)
+    )
+    expect_true(all(is.finite(j)), info = paste("scale", scale))
+    expect_equal(qr(j)$rank, 3L, info = paste("scale", scale))
+  }
+})
+
+test_that("near-boundary correlations still transform and draw", {
+  # correlation 0.98 -- valid but close to the edge of the PD cone
+  om <- matrix(c(0.30, 0.98 * sqrt(0.30 * 0.12),
+                 0.98 * sqrt(0.30 * 0.12), 0.12), 2L, 2L)
+  expect_true(all(eigen(om, symmetric = TRUE, only.values = TRUE)$values > 0))
+
+  phi <- .omegaToPhi(om)
+  expect_equal(.phiToOmega(phi, 2L), om, tolerance = 1e-9)
+
+  sigma <- diag(c(0.06, 0.02, 0.03)^2)
+  spec <- .jointDrawSpec(
+    stats::setNames(numeric(0), character(0)),
+    list(list(omega = om, index = 1:2)),
+    sigma
+  )
+  set.seed(21)
+  ok <- vapply(seq_len(500L), function(i) {
+    d <- .drawJoint(spec)$omega[[1L]]
+    all(eigen(d, symmetric = TRUE, only.values = TRUE)$values > 0)
+  }, logical(1))
+  expect_true(all(ok))
+})
+
+test_that("an ill-conditioned but positive-definite block is handled", {
+  om <- diag(c(1e-6, 1e2))   # condition number ~1e8
+  expect_true(all(eigen(om, symmetric = TRUE, only.values = TRUE)$values > 0))
+  j <- .numericJacobian(
+    function(w) .omegaToPhi(.vecToOmega(w, 2L)),
+    .omegaToVec(om)
+  )
+  expect_true(all(is.finite(j)))
+  expect_equal(qr(j)$rank, 3L)
+})
+
+test_that("multi-block draws map back to the right etas", {
+  # Two blocks of different sizes stacked into one joint draw. If the phi
+  # vector were split at the wrong offsets, the blocks would be silently
+  # transposed -- values would look plausible but belong to the wrong etas.
+  omA <- matrix(c(0.30, 0.05, 0.05, 0.12), 2L, 2L)   # 3 phi elements
+  omB <- matrix(9.00, 1L, 1L)                        # 1 phi element, distinct scale
+
+  sigma <- diag(c(0.06, 0.02, 0.03, 1.50)^2)
+  spec <- .jointDrawSpec(
+    stats::setNames(numeric(0), character(0)),
+    list(
+      list(omega = omA, index = 1:2),
+      list(omega = omB, index = 3L)
+    ),
+    sigma
+  )
+
+  set.seed(3)
+  d <- .drawJoint(spec)
+
+  expect_length(d$omega, 2L)
+  expect_equal(dim(d$omega[[1L]]), c(2L, 2L))
+  expect_equal(dim(d$omega[[2L]]), c(1L, 1L))
+  # the second block's scale (~9) must not leak into the first (~0.3)
+  expect_lt(d$omega[[1L]][1L, 1L], 3)
+  expect_gt(d$omega[[2L]][1L, 1L], 3)
+})
