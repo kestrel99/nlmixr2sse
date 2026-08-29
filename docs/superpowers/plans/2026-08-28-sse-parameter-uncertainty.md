@@ -53,7 +53,7 @@ This reproduces with the exact model and control settings in the package README,
 
 Confirmed against a live fit with a 2×2 block plus a separate diagonal eta.
 
-**2. `.uiOmegaInfo()` gives you the mapping.** It already exists in `R/sse-helpers.R`. **It must be passed `fit$ui`, NOT `fit`** — passing a fit returns zero rows, silently. Verified output:
+**2. `.uiOmegaInfo()` gives you the mapping.** It already exists in `R/sse-helpers.R`. **It must be passed the ui, NOT the fit** — passing a fit returns zero rows, silently. In package code reach it with `.fitField(fit, "ui")`, NEVER `fit[["ui"]]`: real fits expose `$` through a custom S3 method but have no `[[` method, so `fit[["ui"]]` falls through to `[[.data.frame` and returns `NULL`. Interactively `fit$ui` is fine. Verified output:
 
 ```
   row col rowName colName   fix
@@ -1066,7 +1066,11 @@ Replace with:
   # sub-block, OMEGA is drawn separately from an inverse-Wishart, and the
   # THETA<->OMEGA cross-terms are deliberately discarded (this mode shares NWPRI's independence factorization, though it is not
   # NWPRI -- the OMEGA density differs).
-  omega_entries <- .omegaEntryTable(.uiOmegaInfo(fit[["ui"]]))
+  # .fitField(), not fit[["ui"]]: real nlmixr2 fits expose $ via a custom S3
+  # method but have NO [[ method, so fit[["ui"]] falls through to [[.data.frame
+  # and silently returns NULL -- yielding an empty OMEGA table and dropping
+  # every OMEGA entry. .fitField() tries [[ then falls back to $ dispatch.
+  omega_entries <- .omegaEntryTable(.uiOmegaInfo(.fitField(fit, "ui")))
   omega_names <- omega_entries$covName
 
   theta_names <- intersect(cov_names, names(theta))
