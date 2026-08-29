@@ -19,5 +19,10 @@ Useful links:
 \author{
 \strong{Maintainer}: Justin Wilkins \email{justin.wilkins@occams.com} (\href{https://orcid.org/0000-0002-7099-9396}{ORCID})
 
+Authors:
+\itemize{
+  \item Justin Wilkins \email{justin.wilkins@occams.com} (\href{https://orcid.org/0000-0002-7099-9396}{ORCID})
+}
+
 }
 \keyword{internal}

@@ -61,7 +61,7 @@ eta. Defaults to \code{0.5}.}
 \item{offsetRawres}{Integer sample offset for raw-results input.}
 
 \item{inFilter, outFilter}{Optional raw-results filters. These accept the same
-forms as \code{\link[nlmixr2utils:raw-results]{nlmixr2utils::setupRawResultsFilter()}}.}
+forms as \code{\link[nlmixr2utils:setupRawResultsFilter]{nlmixr2utils::setupRawResultsFilter()}}.}
 
 \item{randomEstimationInits}{Logical. When \code{TRUE}, raw-results-driven SSE
 also uses each selected raw-results row as the starting point for the
@@ -103,9 +103,8 @@ An object of class \code{nlmixr2SSEControl}.
 }
 \description{
 \code{runSSEControl()} constructs and validates the control object used by
-\code{\link[=runSSE]{runSSE()}}. Phase 7 keeps the Phase 6 uncertainty-mode controls,
-resumable add-models workflow, raw-results filtering, and
-estimation-initialization switches, and now also exposes simulation
-post-processing hooks while still holding \code{initialEtas} back pending
-stability work.
+\code{\link[=runSSE]{runSSE()}}. Phase 7 keeps the Phase 6 uncertainty-mode controls, resumable
+add-models workflow, raw-results filtering, and estimation-initialization
+switches, and now also exposes simulation post-processing hooks while still
+holding \code{initialEtas} back pending stability work.
 }

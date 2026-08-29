@@ -52,9 +52,8 @@ returns an \code{nlmixr2SSE} object containing raw results plus tidy parameter a
 OFV summaries.
 }
 \details{
-Phase 7 keeps the resumable run-state tracking, add-models support on
-completed SSE directories, and summary recomputation via
-\code{\link[=recomputeSSE]{recomputeSSE()}}, and adds simulated-data post-processing via
-\code{runSSEControl(simulationPostProcess = ...)} on top of the fixed,
-raw-results-driven, and covariance-based simulation modes.
+Phase 6 adds resumable run-state tracking, add-models support on completed
+SSE directories, and summary recomputation via \code{\link[=recomputeSSE]{recomputeSSE()}}, while
+retaining the fixed, raw-results-driven, and covariance-based simulation
+modes from Phase 5.
 }
