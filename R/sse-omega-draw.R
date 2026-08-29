@@ -52,3 +52,40 @@
     stringsAsFactors = FALSE
   )
 }
+
+#' Split OMEGA into independent blocks
+#'
+#' Two etas belong to the same block when an off-diagonal entry links them,
+#' directly or transitively. A fully diagonal OMEGA yields all 1x1 blocks.
+#'
+#' @param tab an `.omegaEntryTable()` result
+#' @param nEta total number of etas
+#' @return list of integer vectors, each sorted, ordered by first member
+#' @noRd
+.omegaBlocks <- function(tab, nEta) {
+  nEta <- as.integer(nEta)
+  if (nEta <= 0L) {
+    return(list())
+  }
+
+  # union-find over eta indices
+  parent <- seq_len(nEta)
+  findRoot <- function(i) {
+    while (parent[[i]] != i) {
+      i <- parent[[i]]
+    }
+    i
+  }
+  offDiag <- tab[!tab$diagonal, , drop = FALSE]
+  for (i in seq_len(nrow(offDiag))) {
+    a <- findRoot(as.integer(offDiag$row[[i]]))
+    b <- findRoot(as.integer(offDiag$col[[i]]))
+    if (a != b) {
+      parent[[max(a, b)]] <- min(a, b)
+    }
+  }
+
+  roots <- vapply(seq_len(nEta), findRoot, integer(1))
+  # order blocks by their first member so output is deterministic
+  unname(split(seq_len(nEta), factor(roots, levels = unique(roots))))
+}
