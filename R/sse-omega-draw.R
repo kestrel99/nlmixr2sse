@@ -117,9 +117,24 @@
   drawable <- list()
   held <- list()
 
+  # An entirely empty entry table means no OMEGA structure could be read from
+  # the ui at all, so coverage cannot be verified for ANY block. That is not a
+  # desync -- it is missing information, and the conservative answer is to hold
+  # everything. A block missing from a NON-empty table is a genuine
+  # inconsistency and still aborts below.
+  noEntryInfo <- nrow(entries) == 0L
+
   for (idx in blocks) {
     inBlock <- entries$row %in% idx & entries$col %in% idx
     blockEntries <- entries[inBlock, , drop = FALSE]
+
+    if (noEntryInfo) {
+      held[[length(held) + 1L]] <- list(
+        index = idx,
+        reason = "no OMEGA entry information available from the model"
+      )
+      next
+    }
 
     if (nrow(blockEntries) == 0L) {
       .abortSSE(
@@ -359,4 +374,16 @@
     "i" = "Parameter uncertainty drawn from these estimates may not be trustworthy."
   ))
   invisible(NULL)
+}
+
+#' Canonical raw-results column labels for OMEGA entries
+#'
+#' The raw-results schema labels OMEGA entries `omega(<rowEta>,<colEta>)`,
+#' which is a different convention from `fit$cov`'s `om.`/`cov.` naming.
+#' @noRd
+.matrixCoordLabelsForEntries <- function(entries) {
+  if (nrow(entries) == 0L) {
+    return(character(0))
+  }
+  paste0("omega(", entries$rowName, ",", entries$colName, ")")
 }

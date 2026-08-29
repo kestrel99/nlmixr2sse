@@ -877,24 +877,156 @@
   fit,
   samples,
   outputDir,
-  schema
+  schema,
+  control
 ) {
+  # No fallback default here: runSSEControl() already resolves covarianceDraw
+  # via match.arg(), so a NULL means the control was built by something other
+  # than runSSEControl() and we should not silently invent a mode.
+  draw_mode <- control$covarianceDraw
   aligned <- .alignedCovariance(fit)
   base_params <- .paramSetFromFit(fit)
-  chol_cov <- chol(aligned$cov)
+
+  has_theta_draw <- length(aligned$drawNames) > 0L
+  chol_cov <- if (has_theta_draw) chol(aligned$cov) else NULL
+
+  omega0 <- base_params$omega
+  n_eta <- if (is.matrix(omega0)) nrow(omega0) else 0L
+  blocks <- .omegaBlocks(aligned$omegaEntries, n_eta)
+  omega_se <- aligned$omegaSe
+
+  # which omega entries actually vary: those in a block with at least one
+  # usable standard error
+  # Coverage policy: a block is drawn ONLY when every declared entry in it is
+  # unfixed and present in fit$cov. Both modes consume this same result -- do
+  # NOT re-derive drawability from standard errors here.
+  coverage <- .drawableOmegaBlocks(
+    blocks,
+    aligned$omegaEntries,
+    rownames(aligned$fullCov)
+  )
+  drawn_blocks <- coverage$drawable
+
+  # report exactly the entries of the drawn blocks, so the partition matches
+  # what actually varies
+  entriesOf <- function(idx) {
+    inBlock <- aligned$omegaEntries$row %in% idx &
+      aligned$omegaEntries$col %in% idx
+    .matrixCoordLabelsForEntries(
+      aligned$omegaEntries[inBlock, , drop = FALSE]
+    )
+  }
+  drawn_omega_cols <- unlist(
+    lapply(drawn_blocks, entriesOf),
+    use.names = FALSE
+  ) %||% character(0)
+
+  # surface why any block was held, so the run record explains itself
+  for (h in coverage$held) {
+    cli::cli_inform(c(
+      "i" = "OMEGA block {.val {paste(rownames(omega0)[h$index], collapse = ', ')}} held at its fitted values ({h$reason})."
+    ))
+  }
+
+  # Warn once per run per drawable block about weakly identified variances --
+  # NOT once per replicate, which would emit `samples` identical warnings.
+  for (idx in drawn_blocks) {
+    .warnWeakOmega(
+      omega0[idx, idx, drop = FALSE],
+      omega_se[idx],
+      idx,
+      control$omegaRseWarn,
+      draw_mode
+    )
+  }
+
+  # "joint" needs one spec built once: the transformed covariance over
+  # c(theta, stacked omega block vectors), restricted to the drawn entries.
+  # Build the joint spec whenever there is ANYTHING to draw -- covered thetas,
+  # drawable OMEGA blocks, or both. Gating on OMEGA alone would silently stop
+  # drawing thetas for a theta-only fit$cov (e.g. foceiControl(covFull =
+  # FALSE)), which the coverage policy explicitly supports.
+  # .jointDrawSpec() handles an empty `blocks` list: the Jacobian is NULL, so
+  # B collapses to diag(nTheta) and Sigma_T is just the theta covariance.
+  joint_spec <- NULL
+  if (
+    identical(draw_mode, "joint") &&
+      (has_theta_draw || length(drawn_blocks) > 0L)
+  ) {
+    joint_names <- c(
+      aligned$drawNames,
+      unlist(lapply(drawn_blocks, function(idx) {
+        inBlock <- aligned$omegaEntries$row %in% idx &
+          aligned$omegaEntries$col %in% idx
+        aligned$omegaEntries$covName[inBlock]
+      }), use.names = FALSE)
+    )
+    # Defensive only: .drawableOmegaBlocks() already guarantees every entry of
+    # a drawable block is present. Reaching this means the coverage policy and
+    # this call disagree, which is an internal inconsistency, not user error.
+    missing_joint <- setdiff(joint_names, rownames(aligned$fullCov))
+    if (length(missing_joint) > 0L) {
+      .abortSSE(
+        "Internal error: OMEGA entr{?y/ies} {.val {missing_joint}} passed the coverage check but {?is/are} absent from {.arg fit$cov}."
+      )
+    }
+    joint_spec <- .jointDrawSpec(
+      theta = aligned$theta[aligned$drawNames],
+      blocks = lapply(drawn_blocks, function(idx) {
+        list(omega = omega0[idx, idx, drop = FALSE], index = idx)
+      }),
+      sigma = aligned$fullCov[joint_names, joint_names, drop = FALSE]
+    )
+  }
 
   records <- lapply(seq_len(samples), function(sample_id) {
-    draw <- nlmixr2utils::withRunSeed(
+    drawn <- nlmixr2utils::withRunSeed(
       outputDir,
       key = paste0("covariance-", sample_id),
       prefix = "sse",
       expr = {
-        noise <- stats::rnorm(length(aligned$drawNames))
-        aligned$theta[aligned$drawNames] + as.numeric(noise %*% chol_cov)
+        if (identical(draw_mode, "joint")) {
+          if (is.null(joint_spec)) {
+            # nothing is drawable at all: no covered thetas AND no drawable
+            # OMEGA block. Everything keeps its fitted value.
+            list(theta = numeric(0), omega = omega0)
+          } else {
+            # THETA and OMEGA drawn TOGETHER, incorporating their covariance.
+            j <- .drawJoint(joint_spec)
+            om <- omega0
+            for (k in seq_along(drawn_blocks)) {
+              idx <- drawn_blocks[[k]]
+              om[idx, idx] <- j$omega[[k]]
+            }
+            list(theta = unname(j$theta), omega = om)
+          }
+        } else {
+          # "independent_iw": THETA and OMEGA drawn INDEPENDENTLY. This shares NWPRI's
+          # broad independence factorization, but is NOT NWPRI -- the OMEGA
+          # density differs (see the mode comparison in the design doc).
+          theta_draw <- if (has_theta_draw) {
+            noise <- stats::rnorm(length(aligned$drawNames))
+            aligned$theta[aligned$drawNames] + as.numeric(noise %*% chol_cov)
+          } else {
+            numeric(0)
+          }
+          omega_draw <- if (n_eta > 0L) {
+            # drawn_blocks, NOT blocks: .drawOmega() requires the approved
+            # drawable list. Passing the raw block list would redraw blocks the
+            # coverage policy held fixed, mutating fixed or uncovered entries.
+            .drawOmega(omega0, drawn_blocks, omega_se)
+          } else {
+            omega0
+          }
+          list(theta = theta_draw, omega = omega_draw)
+        }
       }
     )
+
     theta <- aligned$theta
-    theta[aligned$drawNames] <- draw
+    if (has_theta_draw && length(drawn$theta) > 0L) {
+      theta[aligned$drawNames] <- drawn$theta
+    }
 
     list(
       sample = as.integer(sample_id),
@@ -904,7 +1036,7 @@
       modelLabel = "simulation",
       role = "simulation",
       theta = theta,
-      omega = base_params$omega,
+      omega = drawn$omega,
       sigma = base_params$sigma
     )
   })
@@ -913,13 +1045,23 @@
     records = records,
     info = list(
       mode = "covariance",
+      covarianceDraw = draw_mode,
       parameterPartition = list(
-        drawn = unname(aligned$drawNames),
+        drawn = unname(c(aligned$drawNames, drawn_omega_cols)),
         fixed = unname(c(
           setdiff(schema$thetaCols, aligned$drawNames),
-          schema$omegaCols,
+          setdiff(schema$omegaCols, drawn_omega_cols),
           schema$sigmaCols
-        ))
+        )),
+        # Persist WHY each block was held. cli_inform() above only reaches the
+        # console; without this the reason is lost the moment the run ends, and
+        # a saved run cannot explain why its OMEGA did not vary.
+        heldOmegaBlocks = lapply(coverage$held, function(h) {
+          list(
+            etas = rownames(omega0)[h$index],
+            reason = h$reason
+          )
+        })
       ),
       estimationInitialValues = "reference_fit"
     )
@@ -973,7 +1115,8 @@
     fit = fit,
     samples = samples,
     outputDir = outputDir,
-    schema = schema
+    schema = schema,
+    control = control
   )
 }
 

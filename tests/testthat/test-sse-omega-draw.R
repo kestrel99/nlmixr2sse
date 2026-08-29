@@ -469,3 +469,205 @@ test_that("warnWeakOmega ignores unusable standard errors", {
     .warnWeakOmega(omega0, se = 0, index = 1L, threshold = 0.5, mode = "joint")
   )
 })
+
+test_that("covariance parameter sets draw both theta and omega", {
+  tmp <- tempfile("nlmixr2sse-covdraw-")
+  dir.create(tmp)
+  on.exit(unlink(tmp, recursive = TRUE, force = TRUE), add = TRUE)
+  nlmixr2utils::withRunSeed(tmp, seed = 11, prefix = "sse")
+
+  nm <- c("tka", "om.eta.ka")
+  cov <- diag(c(0.04, 0.001))
+  dimnames(cov) <- list(nm, nm)
+  omega <- matrix(0.3, 1L, 1L, dimnames = list("eta.ka", "eta.ka"))
+
+  fit <- list(
+    theta = c(tka = 0.45),
+    omega = omega,
+    sigma = matrix(numeric(0), 0L, 0L),
+    cov = cov,
+    ui = list(iniDf = data.frame(
+      name = c("tka", "eta.ka"),
+      ntheta = c(1L, NA),
+      neta1 = c(NA, 1L),
+      neta2 = c(NA, 1L),
+      fix = c(FALSE, FALSE),
+      stringsAsFactors = FALSE
+    ))
+  )
+
+  schema <- list(
+    thetaCols = "tka",
+    omegaCols = "omega(eta.ka,eta.ka)",
+    sigmaCols = character(0)
+  )
+
+  # NOTE: the loop below runs BOTH modes. Do not collapse it to the default
+  # mode only -- a theta-only regression in "joint" is invisible from
+  # "independent_iw" and vice versa.
+
+  # both modes must draw theta AND omega
+  for (mode in c("joint", "independent_iw")) {
+    res <- .resolveCovarianceParameterSets(
+      fit = fit,
+      samples = 3L,
+      outputDir = tmp,
+      schema = schema,
+      control = runSSEControl(
+        parameterSource = "covariance",
+        covarianceDraw = mode
+      )
+    )
+
+    expect_length(res$records, 3L)
+
+    thetas <- vapply(res$records, function(r) unname(r$theta[["tka"]]), numeric(1))
+    omegas <- vapply(res$records, function(r) r$omega[1L, 1L], numeric(1))
+
+    # both vary across replicates
+    expect_gt(length(unique(thetas)), 1L)
+    expect_gt(length(unique(omegas)), 1L)
+    # every drawn omega is positive
+    expect_true(all(omegas > 0), info = mode)
+    # the partition names omega as drawn, not fixed
+    expect_true(
+      "omega(eta.ka,eta.ka)" %in% res$info$parameterPartition$drawn,
+      info = mode
+    )
+    # the run record states which mode produced the draws
+    expect_equal(res$info$covarianceDraw, mode)
+  }
+})
+
+test_that("held OMEGA blocks and their reasons survive in res$info", {
+  # A 2x2 block with a missing off-diagonal: coverage holds the whole block,
+  # and the run record must be able to say why after the run has finished.
+  tmp <- tempfile("nlmixr2sse-held-")
+  dir.create(tmp)
+  on.exit(unlink(tmp, recursive = TRUE, force = TRUE), add = TRUE)
+  nlmixr2utils::withRunSeed(tmp, seed = 3, prefix = "sse")
+
+  nm <- c("tka", "om.eta.a", "om.eta.b")   # cov.eta.b.eta.a deliberately absent
+  cov <- diag(c(0.04, 0.001, 0.001))
+  dimnames(cov) <- list(nm, nm)
+  omega <- matrix(c(0.30, 0.05, 0.05, 0.12), 2L, 2L,
+                  dimnames = list(c("eta.a", "eta.b"), c("eta.a", "eta.b")))
+
+  fit <- list(
+    theta = c(tka = 0.45),
+    omega = omega,
+    sigma = matrix(numeric(0), 0L, 0L),
+    cov = cov,
+    ui = list(iniDf = data.frame(
+      name = c("tka", "eta.a", "(eta.a,eta.b)", "eta.b"),
+      ntheta = c(1L, NA, NA, NA),
+      neta1 = c(NA, 1L, 2L, 2L),
+      neta2 = c(NA, 1L, 1L, 2L),
+      fix = c(FALSE, FALSE, FALSE, FALSE),
+      stringsAsFactors = FALSE
+    ))
+  )
+
+  res <- .resolveCovarianceParameterSets(
+    fit = fit,
+    samples = 2L,
+    outputDir = tmp,
+    schema = list(
+      thetaCols = "tka",
+      omegaCols = c("omega(eta.a,eta.a)", "omega(eta.b,eta.a)",
+                    "omega(eta.b,eta.b)"),
+      sigmaCols = character(0)
+    ),
+    control = runSSEControl(parameterSource = "covariance")
+  )
+
+  held <- res$info$parameterPartition$heldOmegaBlocks
+  expect_length(held, 1L)
+  expect_setequal(held[[1L]]$etas, c("eta.a", "eta.b"))
+  expect_match(held[[1L]]$reason, "cov\\.eta\\.b\\.eta\\.a")
+
+  # and the block really did stay fitted
+  omegas <- vapply(res$records, function(r) r$omega[1L, 1L], numeric(1))
+  expect_equal(omegas, rep(0.30, 2L))
+})
+
+test_that("theta-only fit$cov still draws thetas in BOTH modes", {
+  # foceiControl(covFull = FALSE), and the installer's fallback when the full
+  # covariance is unavailable, both produce a theta-only fit$cov. Thetas must
+  # still be drawn; all OMEGA is held. Guards against gating the whole draw on
+  # OMEGA drawability.
+  nm <- c("tka", "tcl")
+  cov <- diag(c(0.04, 0.09))
+  dimnames(cov) <- list(nm, nm)
+  omega <- matrix(0.3, 1L, 1L, dimnames = list("eta.ka", "eta.ka"))
+
+  fit <- list(
+    theta = c(tka = 0.45, tcl = 1.0),
+    omega = omega,
+    sigma = matrix(numeric(0), 0L, 0L),
+    cov = cov,
+    ui = list(iniDf = data.frame(
+      name = c("tka", "tcl", "eta.ka"),
+      ntheta = c(1L, 2L, NA),
+      neta1 = c(NA, NA, 1L),
+      neta2 = c(NA, NA, 1L),
+      fix = c(FALSE, FALSE, FALSE),
+      stringsAsFactors = FALSE
+    ))
+  )
+
+  schema <- list(
+    thetaCols = c("tka", "tcl"),
+    omegaCols = "omega(eta.ka,eta.ka)",
+    sigmaCols = character(0)
+  )
+
+  for (mode in c("independent_iw", "joint")) {
+    tmp <- tempfile(paste0("nlmixr2sse-thetaonly-", mode, "-"))
+    dir.create(tmp)
+    on.exit(unlink(tmp, recursive = TRUE, force = TRUE), add = TRUE)
+    nlmixr2utils::withRunSeed(tmp, seed = 5, prefix = "sse")
+
+    res <- .resolveCovarianceParameterSets(
+      fit = fit,
+      samples = 4L,
+      outputDir = tmp,
+      schema = schema,
+      control = runSSEControl(
+        parameterSource = "covariance",
+        covarianceDraw = mode
+      )
+    )
+
+    thetas <- vapply(res$records, function(r) unname(r$theta[["tka"]]), numeric(1))
+    omegas <- vapply(res$records, function(r) r$omega[1L, 1L], numeric(1))
+
+    # thetas ARE drawn even with no drawable OMEGA block
+    expect_gt(length(unique(signif(thetas, 8))), 1L)
+    # OMEGA is held at its fitted value
+    expect_equal(omegas, rep(0.3, 4L), info = mode)
+    # and reported as fixed, not drawn
+    expect_true("tka" %in% res$info$parameterPartition$drawn, info = mode)
+    expect_true(
+      "omega(eta.ka,eta.ka)" %in% res$info$parameterPartition$fixed,
+      info = mode
+    )
+  }
+})
+
+test_that("drawableOmegaBlocks holds all blocks when no entry info exists", {
+  # A ui whose iniDf carries no OMEGA rows yields an empty entry table, while
+  # nEta still comes from fit$omega. That is missing information, not a
+  # desync: coverage cannot be verified, so every block is held.
+  empty <- data.frame(
+    row = integer(0), col = integer(0),
+    rowName = character(0), colName = character(0),
+    fix = logical(0), covName = character(0), diagonal = logical(0),
+    stringsAsFactors = FALSE
+  )
+  res <- .drawableOmegaBlocks(list(1L), empty, covNames = c("tka", "tcl"))
+
+  expect_length(res$drawable, 0L)
+  expect_length(res$held, 1L)
+  expect_match(res$held[[1L]]$reason, "no OMEGA entry information")
+})
