@@ -150,3 +150,106 @@
   }
   out
 }
+
+#' Build the transformed joint draw specification
+#'
+#' `blocks` is a list of `list(omega = <block matrix>, index = <eta indices>)`.
+#' `sigma` is the covariance over `c(theta, <block omega vectors in order>)` on
+#' the NATURAL scale, already subset to the drawn entries.
+#'
+#' @return list(thetaNames, thetaMean, phiMean, blocks, chol, nTheta)
+#' @noRd
+.jointDrawSpec <- function(theta, blocks, sigma) {
+  nTheta <- length(theta)
+  phiMean <- unlist(lapply(blocks, function(b) .omegaToPhi(b$omega)),
+                    use.names = FALSE)
+
+  # Jacobian of the stacked natural->transformed map, block-diagonal because
+  # blocks are structurally independent of one another.
+  jac <- NULL
+  for (b in blocks) {
+    p <- nrow(b$omega)
+    jb <- .numericJacobian(
+      function(w) .omegaToPhi(.vecToOmega(w, p)),
+      .omegaToVec(b$omega),
+      context = paste(rownames(b$omega), collapse = ", ")
+    )
+    jac <- if (is.null(jac)) {
+      jb
+    } else {
+      rbind(
+        cbind(jac, matrix(0, nrow(jac), ncol(jb))),
+        cbind(matrix(0, nrow(jb), ncol(jac)), jb)
+      )
+    }
+  }
+
+  bMat <- if (is.null(jac)) {
+    diag(nTheta)
+  } else {
+    rbind(
+      cbind(diag(nTheta), matrix(0, nTheta, ncol(jac))),
+      cbind(matrix(0, nrow(jac), nTheta), jac)
+    )
+  }
+
+  sigmaT <- bMat %*% sigma %*% t(bMat)
+  sigmaT <- 0.5 * (sigmaT + t(sigmaT))
+
+  ev <- suppressWarnings(
+    eigen(sigmaT, symmetric = TRUE, only.values = TRUE)$values
+  )
+  if (!all(is.finite(ev)) || min(ev) <= 0) {
+    .abortSSE(
+      paste0(
+        "The delta-method transformed covariance is not positive-definite, so ",
+        "a joint THETA/OMEGA draw is not possible. Use ",
+        "{.code runSSEControl(covarianceDraw = \"independent_iw\")}, or ",
+        "{.code parameterSource = \"fixed\"}."
+      )
+    )
+  }
+
+  list(
+    thetaNames = names(theta),
+    thetaMean = unname(theta),
+    phiMean = phiMean,
+    blocks = blocks,
+    chol = chol(sigmaT),
+    nTheta = nTheta
+  )
+}
+
+#' Take one joint draw and back-transform it
+#'
+#' @return list(theta = named numeric, omega = list of block matrices)
+#' @noRd
+.drawJoint <- function(spec) {
+  mu <- c(spec$thetaMean, spec$phiMean)
+  drawn <- mu + as.numeric(stats::rnorm(length(mu)) %*% spec$chol)
+
+  # NOTE: split by explicit positive indices. `drawn[-seq_len(nTheta)]` returns
+  # an EMPTY vector when nTheta == 0 (because -integer(0) is integer(0)), which
+  # would silently discard the entire OMEGA draw for an OMEGA-only covariance.
+  theta <- if (spec$nTheta > 0L) {
+    stats::setNames(drawn[seq_len(spec$nTheta)], spec$thetaNames)
+  } else {
+    stats::setNames(numeric(0), character(0))
+  }
+
+  phi <- if (length(drawn) > spec$nTheta) {
+    drawn[(spec$nTheta + 1L):length(drawn)]
+  } else {
+    numeric(0)
+  }
+  omega <- list()
+  at <- 0L
+  for (b in spec$blocks) {
+    p <- nrow(b$omega)
+    n <- p * (p + 1L) / 2L
+    omega[[length(omega) + 1L]] <- .phiToOmega(phi[at + seq_len(n)], p)
+    at <- at + n
+  }
+
+  list(theta = theta, omega = omega)
+}

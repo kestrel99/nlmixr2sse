@@ -95,3 +95,78 @@ test_that("vecToOmega rejects a wrong-length vector", {
   expect_s3_class(err, "error")
   expect_match(conditionMessage(err), "3")
 })
+
+test_that("joint draw incorporates the theta-omega covariance", {
+  p <- 2L
+  om0 <- matrix(c(0.30, 0.05, 0.05, 0.12), p, p)
+  th0 <- c(tka = 0.45, add = 0.70)
+  w0 <- .omegaToVec(om0)
+
+  corTarget <- diag(5L)
+  corTarget[1L, 3L] <- corTarget[3L, 1L] <- 0.45   # tka <-> om(1,1)
+  corTarget[2L, 5L] <- corTarget[5L, 2L] <- -0.35  # add <-> om(2,2)
+  sds <- c(0.18, 0.12, 0.060, 0.020, 0.030)
+  sigma <- diag(sds) %*% corTarget %*% diag(sds)
+
+  spec <- .jointDrawSpec(th0, list(list(omega = om0, index = seq_len(p))), sigma)
+
+  set.seed(2024)
+  draws <- lapply(seq_len(6000L), function(i) .drawJoint(spec))
+
+  tka <- vapply(draws, function(d) unname(d$theta[["tka"]]), numeric(1))
+  add <- vapply(draws, function(d) unname(d$theta[["add"]]), numeric(1))
+  om11 <- vapply(draws, function(d) d$omega[[1L]][1L, 1L], numeric(1))
+  om22 <- vapply(draws, function(d) d$omega[[1L]][2L, 2L], numeric(1))
+
+  expect_equal(stats::cor(tka, om11), 0.45, tolerance = 0.05)
+  expect_equal(stats::cor(add, om22), -0.35, tolerance = 0.05)
+  # om11 = exp(2*phi1) is exactly lognormal in phi1's own (exactly Gaussian,
+  # since phi is a linear draw) marginal, so the SD inflation here is an EXACT
+  # analytic consequence of the log-Cholesky back-transform, not Monte Carlo
+  # noise: closed form gives sd(om11) = 0.0618 against a natural-scale SE of
+  # 0.060, a deterministic +3.05% -- the same nonlinear-inflation phenomenon
+  # this mode's docs quantify for the mean ("2% at 20% relative SE"; om11's
+  # RSE here is 0.06/0.30 = 20%, matching almost exactly). tolerance = 0.01
+  # cannot pass for ANY correct implementation of this spec; widened to give
+  # headroom for both the exact bias and residual MC noise at n = 6000.
+  expect_equal(stats::sd(om11), 0.060, tolerance = 0.08)
+})
+
+test_that("joint draw survives an OMEGA-only covariance (zero thetas)", {
+  # regression guard for the -seq_len(0) trap: with no thetas, a negative-index
+  # split would silently return an empty phi and lose the OMEGA draw entirely
+  om0 <- matrix(c(0.30, 0.05, 0.05, 0.12), 2L, 2L)
+  sigma <- diag(c(0.06, 0.02, 0.03)^2)
+
+  spec <- .jointDrawSpec(
+    stats::setNames(numeric(0), character(0)),
+    list(list(omega = om0, index = 1:2)),
+    sigma
+  )
+
+  set.seed(11)
+  d <- .drawJoint(spec)
+
+  expect_length(d$theta, 0L)
+  expect_length(d$omega, 1L)
+  expect_equal(dim(d$omega[[1L]]), c(2L, 2L))
+  expect_true(all(is.finite(d$omega[[1L]])))
+  expect_true(
+    all(eigen(d$omega[[1L]], symmetric = TRUE, only.values = TRUE)$values > 0)
+  )
+})
+
+test_that("every joint draw is positive-definite", {
+  om0 <- matrix(c(0.30, 0.05, 0.05, 0.12), 2L, 2L)
+  th0 <- c(tka = 0.45)
+  sigma <- diag(c(0.03, 0.06, 0.02, 0.03)^2)
+
+  spec <- .jointDrawSpec(th0, list(list(omega = om0, index = 1:2)), sigma)
+
+  set.seed(5)
+  ok <- vapply(seq_len(3000L), function(i) {
+    om <- .drawJoint(spec)$omega[[1L]]
+    all(eigen(om, symmetric = TRUE, only.values = TRUE)$values > 0)
+  }, logical(1))
+  expect_true(all(ok))
+})
