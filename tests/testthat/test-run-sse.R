@@ -885,7 +885,7 @@ test_that("runSSE supports raw-results and covariance parameter sources end to e
     cov_res$initialValues$parameter == "omega(eta.ka,eta.ka)"
   ]
   expect_gte(length(unique(signif(cov_tka, 8))), 2L)
-  expect_equal(length(unique(signif(cov_omega, 8))), 1L)
+  expect_gte(length(unique(signif(cov_omega, 8))), 2L)
 })
 
 test_that("validateResumeRequest aborts on an rxThreads mismatch", {

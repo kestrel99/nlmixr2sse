@@ -288,7 +288,8 @@ runSSE <- function(
   }
   if (identical(control$parameterSource, "covariance")) {
     cli::cli_inform(c(
-      "i" = "Thetas are drawn from {.field fit$cov}; OMEGA and SIGMA stay at the fitted point estimates."
+      "i" = "Parameters are drawn from {.field fit$cov} ({.field {control$covarianceDraw}} draw).",
+      "i" = "OMEGA blocks without full covariance coverage stay at their fitted values."
     ))
   }
   cli::cli_rule()
