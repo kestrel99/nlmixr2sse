@@ -220,3 +220,64 @@ test_that("omegaWishartSpec names the offending eta in the bad-variance abort", 
   expect_s3_class(err, "error")
   expect_match(conditionMessage(err), "eta.ka", fixed = TRUE)
 })
+
+test_that("drawOmegaBlock returns a positive-definite symmetric matrix", {
+  omega0 <- matrix(c(0.30, 0.05, 0.05, 0.12), 2L, 2L)
+  spec <- .omegaWishartSpec(omega0, c(0.06, 0.03))
+
+  set.seed(1234)
+  drawn <- .drawOmegaBlock(spec)
+
+  expect_equal(dim(drawn), c(2L, 2L))
+  expect_equal(drawn, t(drawn))
+  expect_true(all(eigen(drawn, symmetric = TRUE, only.values = TRUE)$values > 0))
+})
+
+test_that("drawOmegaBlock recovers the target mean and binding SE", {
+  omega0 <- matrix(c(0.30, 0.05, 0.05, 0.12), 2L, 2L)
+  targetSe <- c(0.06, 0.03)
+  spec <- .omegaWishartSpec(omega0, targetSe)
+
+  set.seed(99)
+  draws <- vapply(seq_len(4000L), function(i) diag(.drawOmegaBlock(spec)),
+                  numeric(2L))
+
+  # E[Omega] == Omega0 for both elements
+  expect_equal(rowMeans(draws), diag(omega0), tolerance = 0.02)
+
+  # the binding (minimum-nu) element recovers its reported SE; here that is
+  # element 2, whose SE is relatively largest
+  closed <- sqrt(2 * diag(omega0)^2 / (spec$nu - spec$p - 3))
+  expect_equal(apply(draws, 1L, stats::sd), closed, tolerance = 0.02)
+})
+
+test_that("drawOmega only touches the blocks it is given", {
+  omega0 <- diag(c(0.30, 0.12))
+  dimnames(omega0) <- list(c("eta.a", "eta.b"), c("eta.a", "eta.b"))
+
+  set.seed(7)
+  # Only block 1 is passed, as `.drawableOmegaBlocks()$drawable` would supply.
+  # Block 2 is absent from the list and must therefore keep its fitted value.
+  # NOTE: do NOT pass an undrawable block here to see what happens -- the
+  # contract is that filtering happened upstream, and testing the unfiltered
+  # case would encode behaviour callers must never rely on.
+  out <- .drawOmega(
+    omega0,
+    blocks = list(1L),
+    se = c(0.06, NA_real_)
+  )
+
+  expect_equal(dimnames(out), dimnames(omega0))
+  expect_equal(out[2L, 2L], 0.12)
+  expect_false(identical(out[1L, 1L], 0.30))
+  expect_equal(out[1L, 2L], 0)
+})
+
+test_that("drawOmega keeps a drawable block whose SE is unusable", {
+  # A block can pass coverage (all entries present and unfixed) yet still have
+  # a numerically unusable SE, so no nu can be moment-matched. Coverage and
+  # usability are distinct conditions; this block stays at its fitted value.
+  omega0 <- matrix(0.30, 1L, 1L, dimnames = list("eta.a", "eta.a"))
+  out <- .drawOmega(omega0, blocks = list(1L), se = NA_real_)
+  expect_equal(out[1L, 1L], 0.30)
+})

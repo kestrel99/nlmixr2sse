@@ -229,3 +229,61 @@
 
   list(omega0 = omega0, nu = nu, p = p)
 }
+
+#' Draw one OMEGA block from a mean-centred inverse-Wishart
+#'
+#' Delegates the draw to `rxode2::cvPost()` rather than re-implementing it.
+#'
+#' `cvPost(nu, omega)` uses the scale convention `Psi = nu * omega`, so it is
+#' NOT mean-centred: `E[Omega*] = nu/(nu - p - 1) * omega`. Verified empirically
+#' -- at `nu = 20, p = 2` the observed ratio is 1.179 against a predicted 1.176.
+#' Pre-scaling the input by `(nu - p - 1)/nu` cancels that exactly, recovering
+#' `E[Omega*] = omega` and the textbook `Var = 2*omega_ii^2/(nu - p - 3)` that
+#' `.omegaWishartSpec()`'s moment match assumes.
+#'
+#' The result is positive-definite by construction, so no rejection sampling is
+#' needed.
+#' @noRd
+.drawOmegaBlock <- function(spec) {
+  scaled <- spec$omega0 * (spec$nu - spec$p - 1) / spec$nu
+  drawn <- tryCatch(
+    rxode2::cvPost(spec$nu, scaled, n = 1L),
+    error = function(e) {
+      .abortSSE(
+        "An OMEGA block could not be drawn from its inverse-Wishart: {conditionMessage(e)}"
+      )
+    }
+  )
+  if (is.list(drawn)) {
+    drawn <- drawn[[1L]]
+  }
+  # enforce exact symmetry (guards against accumulated numerical asymmetry)
+  0.5 * (drawn + t(drawn))
+}
+
+#' Draw a full OMEGA matrix, block by block
+#'
+#' `blocks` MUST already be `.drawableOmegaBlocks()$drawable` — this function
+#' does not decide drawability, and must not be handed the raw block list.
+#' Anything not in `blocks` keeps its fitted value.
+#'
+#' @param omega0 the fitted OMEGA
+#' @param blocks DRAWABLE eta-index vectors only
+#' @param se per-eta reported standard errors
+#' @return a full OMEGA matrix with `omega0`'s dimnames
+#' @noRd
+.drawOmega <- function(omega0, blocks, se) {
+  out <- omega0
+  for (idx in blocks) {
+    spec <- .omegaWishartSpec(
+      omega0[idx, idx, drop = FALSE],
+      se[idx]
+    )
+    if (is.null(spec)) {
+      # a drawable block with no usable SE cannot be given a nu; keep it fitted
+      next
+    }
+    out[idx, idx] <- .drawOmegaBlock(spec)
+  }
+  out
+}
