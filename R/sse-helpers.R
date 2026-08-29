@@ -590,6 +590,14 @@
     use.names = FALSE
   ))
   param_cols <- c(theta_cols, omega_cols, sigma_cols)
+  # paste0() drops zero-length arguments rather than returning zero length, so
+  # paste0(character(0), ".se") is ".se", not character(0). Without this guard a
+  # schema with no parameters gains a spurious ".se" column.
+  se_cols <- if (length(param_cols) > 0L) {
+    paste0(param_cols, ".se")
+  } else {
+    character(0)
+  }
 
   list(
     columns = c(
@@ -608,7 +616,7 @@
         "error_message"
       ),
       param_cols,
-      paste0(param_cols, ".se")
+      se_cols
     ),
     baseCols = c(
       "source",
@@ -627,7 +635,7 @@
     thetaCols = theta_cols,
     omegaCols = omega_cols,
     sigmaCols = sigma_cols,
-    seCols = paste0(param_cols, ".se"),
+    seCols = se_cols,
     schemaVersion = 1L
   )
 }

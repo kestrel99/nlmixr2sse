@@ -23,6 +23,18 @@ helpers from `nlmixr2utils`, so `raw_results.*` files move directly between
 remotes::install_github("kestrel99/nlmixr2sse")
 ```
 
+## Vignettes
+
+```r
+vignette("runSSE", package = "nlmixr2sse")
+vignette("sse-power", package = "nlmixr2sse")
+```
+
+- **`runSSE`** — running SSE end to end: restart and resume, plotting, and the
+  uncertainty-driven parameter sources.
+- **`sse-power`** — a worked sample-size study: how many subjects are needed to
+  detect a covariate effect.
+
 ## End-to-end example
 
 ```r
