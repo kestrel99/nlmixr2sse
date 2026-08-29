@@ -27,9 +27,21 @@
 #' Rebuild an OMEGA block from its log-Cholesky vector
 #'
 #' Exponentiating the diagonal keeps it strictly positive, so the result is
-#' positive-definite for any `phi`.
+#' positive-definite by construction in exact arithmetic (L is triangular with
+#' strictly positive diagonal). At extreme condition numbers -- around 1e16,
+#' reachable with deliberately wild synthetic input on 3x3+ blocks --
+#' floating-point roundoff can still produce a matrix that fails a strict
+#' eigen() check. Realistic delta-method draws centred on a fitted OMEGA do
+#' not reach that regime, but callers should not assume ironclad PD for large
+#' ill-conditioned blocks.
 #' @noRd
 .phiToOmega <- function(phi, p) {
+  expected <- p * (p + 1L) / 2L
+  if (length(phi) != expected) {
+    .abortSSE(
+      "Expected {.val {expected}} log-Cholesky elements for a {.val {p}}-eta block, got {.val {length(phi)}}."
+    )
+  }
   idx <- .lowerTriIndex(p)
   onDiag <- idx[, "row"] == idx[, "col"]
   v <- phi
@@ -49,6 +61,12 @@
 #' Rebuild a symmetric matrix from `.omegaToVec()` output
 #' @noRd
 .vecToOmega <- function(v, p) {
+  expected <- p * (p + 1L) / 2L
+  if (length(v) != expected) {
+    .abortSSE(
+      "Expected {.val {expected}} lower-triangular elements for a {.val {p}}-eta block, got {.val {length(v)}}."
+    )
+  }
   idx <- .lowerTriIndex(p)
   omega <- matrix(0, p, p)
   omega[cbind(idx[, "row"], idx[, "col"])] <- v
