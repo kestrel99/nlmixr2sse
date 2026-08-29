@@ -1,5 +1,10 @@
 # SSE Statistical Rigour Improvement Plan
 
+> **Superseded** by `docs/superpowers/plans/2026-08-30-sse-statistical-rigour.md`,
+> which merges this roadmap with the PPE design in
+> `docs/superpowers/specs/2026-08-30-sse-psn-ppe-design.md` and expands every
+> task into executable TDD steps. Kept for provenance; do not execute from here.
+
 **Goal:** Strengthen the statistical definition, diagnostics, and uncertainty
 quantification of `nlmixr2sse` without reproducing NONMEM- or PsN-specific
 execution machinery.

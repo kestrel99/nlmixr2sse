@@ -1,12 +1,18 @@
-# PsN-Compatible PPE Design
+# Distribution-Based PPE Design
 
 ## Goal
 
-Add a PsN-compatible parametric power estimation (PPE) method to
-`nlmixr2sse`, alongside the existing estimator, together with explicit model
-comparisons, explicit degrees of freedom, a parametric-bootstrap uncertainty
-interval, a Type-I/df-estimation mode, and PsN's ECDF-versus-fitted
-distribution diagnostic.
+Add the distribution-based parametric power estimation (PPE) method of Ueckert,
+Karlsson and Hooker (2016) — the estimator PsN implements — to `nlmixr2sse` as
+the new default, retaining the existing exceedance estimator under an explicit
+method name, together with explicit model comparisons, explicit degrees of
+freedom, a parametric-bootstrap uncertainty interval, a Type-I/df-estimation
+mode, and an ECDF-versus-fitted distribution diagnostic.
+
+This design is executed as Tasks 2 and 5–8 of the integrated plan at
+`docs/superpowers/plans/2026-08-30-sse-statistical-rigour.md`, which merges it
+with the broader statistical-rigour work. Where the two disagreed, the
+reconciliation is recorded under **API** below.
 
 ## Background
 
@@ -116,8 +122,11 @@ with no `ggplot2` dependency. `R/plot-sse.R` (currently 815 lines) consumes it
 for rendering. The statistics are the risky part of this feature and become
 testable without constructing a plot.
 
-The existing `binomial_inversion` path stays the default, so no current call
-changes its output.
+The legacy `exceedance` estimator is retained in full under an explicit method
+name, for backward compatibility and sensitivity analysis, but is no longer the
+default. Its outputs gain unambiguous names
+(`threshold_exceedance_probability`, `threshold_implied_ncp`) so they cannot be
+confused with the distribution fit.
 
 ## API
 
@@ -125,7 +134,7 @@ changes its output.
 plotSSEPpePower(
   x,
   comparisons = NULL,
-  method      = c("binomial_inversion", "psn_mle"),
+  method      = c("distribution_mle", "exceedance"),
   df          = NULL,
   alpha       = 0.05,
   thresholds  = NULL,
@@ -133,34 +142,53 @@ plotSSEPpePower(
   studySizes  = NULL,
   targetPower = 99,
   conf.level  = 0.95,
-  nBoot       = 1000L,
+  nonpositive = c("warn", "error", "drop"),
+  bootstrapSamples = 1000L,
   bootSeed    = NULL,
   diagnostics = FALSE,
   ...
 )
 
-plotSSEPpeDiagnostic(x, comparisons = NULL, df = NULL, alpha = 0.05,
-                     conf.level = 0.95, nBoot = 1000L, bootSeed = NULL, ...)
+plotSSEPpeDiagnostics(x, comparisons = NULL, df = NULL, alpha = 0.05,
+                      conf.level = 0.95, bootstrapSamples = 1000L,
+                      bootSeed = NULL, ...)
 
-ppeSummary(x, comparisons = NULL, method = c("binomial_inversion", "psn_mle"),
-           df = NULL, alpha = 0.05, nBoot = 1000L, bootSeed = NULL, ...)
+ppeSummary(x, comparisons = NULL, method = c("distribution_mle", "exceedance"),
+           df = NULL, alpha = 0.05, conf.level = 0.95,
+           nonpositive = c("warn", "error", "drop"),
+           bootstrapSamples = 1000L, bootSeed = NULL, ...)
 
-sseComparison(full, reduced, df = NULL, label = NULL)
+sseComparison(full, reduced, df = NULL, alpha = 0.05,
+              criticalValue = NULL, label = NULL)
 ```
 
-`method` lists `binomial_inversion` first so `match.arg()` keeps it the default.
-This differs from the original sketch, which listed `psn_mle` first; the default
-was deliberately kept unchanged so existing plots do not silently change.
+`method` lists `distribution_mle` first so `match.arg()` makes it the default.
+This is a **breaking change to plot output**: existing `plotSSEPpePower()` calls
+switch estimator and their numbers change. It requires a NEWS entry.
 
-`nBoot`, `bootSeed`, and `alpha` apply only to `psn_mle`. Supplying them with
-`binomial_inversion` is an error rather than a silent no-op. `conf.level`
+This reconciles two earlier decisions that disagreed. The
+2026-08-29 statistical-rigour plan specified `distribution_mle` as the
+documented default; an intermediate decision during this design kept the legacy
+estimator as the default. The rigour plan wins: the MLE uses the whole ΔOFV
+distribution rather than a single exceedance count, and shipping the weaker
+estimator by default would be indefensible once the better one exists.
+
+Method names follow the rigour plan (`distribution_mle`, `exceedance`) rather
+than PsN-derived names. A name like `psn_mle` would overclaim, since this
+package does not seek PsN execution, seed, or file-format parity — only the
+same estimator, which is Ueckert, Karlsson and Hooker (2016).
+
+`bootstrapSamples`, `bootSeed`, `alpha`, and `nonpositive` apply only to
+`distribution_mle`. Supplying them with `exceedance` is an error rather than a
+silent no-op. `bootstrapSamples = 0` skips the bootstrap without changing the
+point estimate. `conf.level`
 applies to both, selecting the Clopper-Pearson level under
-`binomial_inversion` and the bootstrap percentile quantiles under `psn_mle`
+`exceedance` and the bootstrap percentile quantiles under `distribution_mle`
 (the `0.95` default gives PsN's 2.5%/97.5%).
 
-`plotSSEPpeDiagnostic()` has no `method` argument. The diagnostic asks whether
+`plotSSEPpeDiagnostics()` has no `method` argument. The diagnostic asks whether
 the fitted noncentral chi-square describes the observed ΔOFV distribution,
-which is only a meaningful question for the MLE fit; it always uses `psn_mle`.
+which is only a meaningful question for the MLE fit; it always uses `distribution_mle`.
 
 `df` accepts a scalar, applied to every comparison, or a vector named by
 comparison label, matched by name. An unnamed vector of length greater than one
@@ -184,9 +212,9 @@ pairing when `comparisons = NULL`; supplying both is an error, because
 | `.ppeParametricBootstrap()` | `R/ppe.R` | Percentile CI by re-estimating from `rchisq()` draws. |
 | `.ppeFit()` | `R/ppe.R` | Orchestrate one comparison into a `ppeFit` record. |
 | `ppeSummary()` | `R/ppe.R` | One row per comparison, the public reporting surface. |
-| `.ppePowerPlotData()` | `R/plot-sse.R` | Gain a `method` branch; `binomial_inversion` path unchanged. |
+| `.ppePowerPlotData()` | `R/plot-sse.R` | Gain a `method` branch; `exceedance` path unchanged. |
 | `plotSSEPpePower()` | `R/plot-sse.R` | Render power curves, or Type-I point-ranges, optionally returning both plots. |
-| `plotSSEPpeDiagnostic()` | `R/plot-sse.R` | ECDF versus fitted CDF with bootstrap ribbon. |
+| `plotSSEPpeDiagnostics()` | `R/plot-sse.R` | ECDF versus fitted CDF with bootstrap ribbon. |
 
 ### The `ppeFit` record
 
@@ -233,12 +261,12 @@ the value used.
 
 | method | `thresholds` supplied | default |
 | --- | --- | --- |
-| `binomial_inversion` | honoured | positive thresholds from `powerSummary` (unchanged) |
-| `psn_mle` | honoured | `qchisq(1 - alpha, df)`, per comparison |
+| `exceedance` | honoured | positive thresholds from `powerSummary` (unchanged) |
+| `distribution_mle` | honoured | `qchisq(1 - alpha, df)`, per comparison |
 
 Because ncp is estimated from the ΔOFV distribution rather than from an
 exceedance count, it does not depend on the threshold. Faceting over several
-thresholds therefore remains meaningful under `psn_mle`: one fit, several
+thresholds therefore remains meaningful under `distribution_mle`: one fit, several
 readouts.
 
 ### Rendering
@@ -285,7 +313,7 @@ The three inherited properties are reported rather than buried:
 | Neither comparison member is the simulation model | Abort naming the comparison; no hypothesis is known true. |
 | A comparison names an unknown model label | Abort listing the available labels. |
 | `full` and `reduced` are the same model | Abort. |
-| `nBoot`, `bootSeed`, or `alpha` given with `binomial_inversion` | Abort; they have no meaning for that estimator. |
+| `bootstrapSamples`, `bootSeed`, or `alpha` given with `exceedance` | Abort; they have no meaning for that estimator. |
 | Both `models` and `comparisons` supplied | Abort; `comparisons` already names every pair. |
 | `df` given as an unnamed vector of length > 1 | Abort; positional matching would be silent and order-dependent. |
 | Fewer than 2 retained (positive) ΔOFVs | Abort naming the comparison and the retained count; the MLE is not identifiable. |
@@ -322,19 +350,19 @@ Comparison and df layer:
 
 Rendering:
 
-- `plotSSEPpePower(method = "psn_mle")` returns a `ggplot`.
+- `plotSSEPpePower(method = "distribution_mle")` returns a `ggplot`.
 - `diagnostics = TRUE` returns a two-element named list of `ggplot`s.
 - A Type-I comparison renders a point-range, not a curve.
-- `plotSSEPpeDiagnostic()` carries an ECDF layer.
+- `plotSSEPpeDiagnostics()` carries an ECDF layer.
 - `ppeSummary()` returns one row per comparison with the documented columns.
 
 Regression guard:
 
 - Every existing `test-plot-sse.R` assertion passes untouched, and
-  `.ppePowerPlotData(method = "binomial_inversion")` is byte-identical to the
+  `.ppePowerPlotData(method = "exceedance")` is byte-identical to the
   current output for the same inputs.
 
-Deliberately **not** tested: that `psn_mle` and `binomial_inversion` agree. They
+Deliberately **not** tested: that `distribution_mle` and `exceedance` agree. They
 are different estimators using different information and will not agree except
 asymptotically; asserting otherwise would encode a false expectation.
 
@@ -355,7 +383,8 @@ asymptotically; asserting otherwise would encode a false expectation.
 
 ## Out of Scope
 
-- Changing the `binomial_inversion` estimator or its default status.
+- Changing the `exceedance` estimator's algorithm. It is retained verbatim, and
+  only loses default status and gains unambiguous output field names.
 - Non-linear ncp scaling with study size; `ncp ∝ N` is retained from both
   implementations.
 - PsN's PDF report layout and `plot_table()` output.
