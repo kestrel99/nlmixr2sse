@@ -121,6 +121,12 @@
     inBlock <- entries$row %in% idx & entries$col %in% idx
     blockEntries <- entries[inBlock, , drop = FALSE]
 
+    if (nrow(blockEntries) == 0L) {
+      .abortSSE(
+        "Internal error: OMEGA block {.val {paste(idx, collapse = ', ')}} has no entries in the entry table."
+      )
+    }
+
     fixedNames <- blockEntries$covName[blockEntries$fix]
     missingNames <- setdiff(
       blockEntries$covName[!blockEntries$fix],

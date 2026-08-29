@@ -136,3 +136,38 @@ test_that("drawableOmegaBlocks handles a theta-only covariance", {
   expect_length(res$drawable, 0L)
   expect_equal(res$held[[1L]]$index, 1L)
 })
+
+test_that("drawableOmegaBlocks reports both fixed and missing entries together", {
+  entries <- data.frame(
+    row = c(1L, 2L, 2L),
+    col = c(1L, 1L, 2L),
+    rowName = c("eta.a", "eta.b", "eta.b"),
+    colName = c("eta.a", "eta.a", "eta.b"),
+    fix = c(TRUE, FALSE, FALSE),
+    covName = c("om.eta.a", "cov.eta.b.eta.a", "om.eta.b"),
+    diagonal = c(TRUE, FALSE, TRUE),
+    stringsAsFactors = FALSE
+  )
+  # om.eta.a is fixed AND cov.eta.b.eta.a is absent from covNames
+  res <- .drawableOmegaBlocks(
+    list(c(1L, 2L)), entries,
+    covNames = "om.eta.b"
+  )
+
+  expect_length(res$drawable, 0L)
+  expect_match(res$held[[1L]]$reason, "fixed: om\\.eta\\.a")
+  expect_match(res$held[[1L]]$reason, "cov\\.eta\\.b\\.eta\\.a")
+})
+
+test_that("drawableOmegaBlocks aborts on a block/entries desync", {
+  entries <- data.frame(
+    row = 1L, col = 1L, rowName = "eta.a", colName = "eta.a",
+    fix = FALSE, covName = "om.eta.a", diagonal = TRUE,
+    stringsAsFactors = FALSE
+  )
+  # block 5 has no entries at all
+  err <- capture_sse_error(
+    .drawableOmegaBlocks(list(5L), entries, covNames = "om.eta.a")
+  )
+  expect_s3_class(err, "error")
+})
