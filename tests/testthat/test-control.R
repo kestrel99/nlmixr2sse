@@ -86,6 +86,47 @@ test_that("runSSEControl rejects invalid rxThreads", {
   }
 })
 
+test_that("runSSEControl exposes covarianceDraw defaulting to independent_iw", {
+  expect_equal(runSSEControl()$covarianceDraw, "independent_iw")
+  expect_equal(
+    runSSEControl(
+      parameterSource = "covariance",
+      covarianceDraw = "joint"
+    )$covarianceDraw,
+    "joint"
+  )
+})
+
+test_that("runSSEControl exposes omegaRseWarn", {
+  expect_equal(runSSEControl()$omegaRseWarn, 0.5)
+  expect_equal(
+    runSSEControl(
+      parameterSource = "covariance",
+      omegaRseWarn = 0.25
+    )$omegaRseWarn,
+    0.25
+  )
+  err <- capture_sse_error(
+    runSSEControl(parameterSource = "covariance", omegaRseWarn = -1)
+  )
+  expect_s3_class(err, "error")
+})
+
+test_that("runSSEControl rejects an unknown covarianceDraw", {
+  err <- capture_sse_error(
+    runSSEControl(parameterSource = "covariance", covarianceDraw = "wishart")
+  )
+  expect_s3_class(err, "error")
+})
+
+test_that("covarianceDraw requires parameterSource = covariance", {
+  err <- capture_sse_error(
+    runSSEControl(parameterSource = "fixed", covarianceDraw = "independent_iw")
+  )
+  expect_s3_class(err, "error")
+  expect_match(conditionMessage(err), "covarianceDraw")
+})
+
 test_that("workerDescription reports the resolved rxode2 thread count", {
   expect_match(
     nlmixr2sse:::.workerDescription(1L, rxThreads = 8L),

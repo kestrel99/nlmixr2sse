@@ -8,6 +8,8 @@ runSSEControl(
   estimateSimulation = TRUE,
   refOfv = NULL,
   parameterSource = c("fixed", "rawres", "covariance"),
+  covarianceDraw = c("independent_iw", "joint"),
+  omegaRseWarn = 0.5,
   rawresInput = NULL,
   offsetRawres = 1L,
   inFilter = NULL,
@@ -33,6 +35,24 @@ re-estimated on each simulated dataset?}
 
 \item{parameterSource}{Source of simulation parameters: fixed fit values,
 canonical raw-results input, or multivariate-normal covariance draws.}
+
+\item{covarianceDraw}{How \code{parameterSource = "covariance"} draws parameters.
+\code{"independent_iw"} (the default) draws THETA multivariate-Normal and OMEGA
+from a mean-centred inverse-Wishart per OMEGA block, independently of each
+other. \code{"joint"} instead draws THETA and OMEGA together from \code{fit$cov} on a
+log-Cholesky-transformed scale, incorporating the estimated THETA/OMEGA
+covariance through a first-order delta approximation. Both give
+positive-definite OMEGA draws.
+
+\code{"joint"} uses information \code{"independent_iw"} discards, but its non-linear
+back-transform inflates OMEGA means by roughly \code{exp(SE^2 / (2 * Omega^2))}
+— about 2\% at 20\% relative standard error, but 65\% at 100\% — so it is
+opt-in rather than the default. Neither mode implements NONMEM's
+\verb{$PRIOR NWPRI}, and neither claims PsN parity.}
+
+\item{omegaRseWarn}{Relative-standard-error threshold above which a drawn
+OMEGA variance triggers a weak-identification warning naming the block and
+eta. Defaults to \code{0.5}.}
 
 \item{rawresInput}{Optional raw-results input path or object for
 \code{parameterSource = "rawres"}. This is required when
