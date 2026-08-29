@@ -259,9 +259,30 @@ runSSE <- function(
       identical(existing_run_info$status, "completed") &&
         .completedSSEArtifactsExist(abs_output_dir)
     ) {
+      # This branch returns before the normal run_info assembly below ever
+      # runs, so `comparisons` has to be validated and merged here too, or it
+      # is silently discarded against a completed run -- contradicting the
+      # `@param comparisons` promise that it validates eagerly and replaces
+      # what is recorded. A comparison is a reporting definition, so applying
+      # it here never refits anything, the same way recomputeSSE() treats it.
+      loaded_run_info <- existing_run_info
+      if (!is.null(comparisons)) {
+        .assertComparisonLabelsUnique(comparisons)
+        .assertComparisonLabelsExist(
+          comparisons,
+          labels = vapply(
+            existing_run_info$fitSpecs %||% list(),
+            `[[`,
+            character(1),
+            "label"
+          ),
+          simLabel = fitName
+        )
+        loaded_run_info$comparisons <- comparisons
+      }
       return(.loadCompletedSSE(
         outputDir = abs_output_dir,
-        runInfo = existing_run_info
+        runInfo = loaded_run_info
       ))
     }
   }
@@ -285,8 +306,10 @@ runSSE <- function(
   if (!is.null(comparisons)) {
     # Every label a comparison can legitimately name is knowable right here --
     # the simulation model plus every fit spec, addModels alternatives
-    # included -- so a typo is caught before any simulation or fitting work
+    # included -- so a typo (or a duplicate label, or a self-comparison via
+    # the "simulation" token) is caught before any simulation or fitting work
     # runs, instead of surfacing only when something later resolves it.
+    .assertComparisonLabelsUnique(comparisons)
     .assertComparisonLabelsExist(
       comparisons,
       labels = vapply(all_fit_specs, `[[`, character(1), "label"),

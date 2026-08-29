@@ -62,17 +62,52 @@ sseComparison <- function(full, reduced, df = NULL, alpha = 0.05,
   })
 }
 
+# One shared resolver. Duplicating this inline in `.resolveComparison()` and
+# `.assertComparisonLabelsExist()` previously left the post-resolution
+# distinctness check missing from one of the two call sites.
+.resolveModelToken <- function(value, simLabel) {
+  if (identical(value, "simulation")) simLabel else value
+}
+
+.assertComparisonLabelsUnique <- function(comparisons) {
+  labels <- vapply(comparisons, `[[`, character(1), "label")
+  if (anyDuplicated(labels) > 0L) {
+    repeated <- unique(labels[duplicated(labels)])
+    .abortSSE("Comparison labels must be unique; {.val {repeated}} {?repeats/repeat}.")
+  }
+}
+
 .assertComparisonLabelsExist <- function(comparisons, labels, simLabel) {
-  named <- unlist(lapply(comparisons, function(cmp) {
-    resolve1 <- function(v) if (identical(v, "simulation")) simLabel else v
-    c(resolve1(cmp$full), resolve1(cmp$reduced))
-  }))
+  resolved <- lapply(comparisons, function(cmp) {
+    list(
+      label = cmp$label,
+      full = .resolveModelToken(cmp$full, simLabel),
+      reduced = .resolveModelToken(cmp$reduced, simLabel)
+    )
+  })
+
+  named <- unlist(lapply(resolved, function(r) c(r$full, r$reduced)))
   unknown <- setdiff(unique(named), labels)
   if (length(unknown) > 0L) {
     .abortSSE(c(
-      "{.arg comparisons} name{?s} model{?s} that this run will not fit: {.val {unknown}}.",
+      "Unknown model{?s} in {.arg comparisons}: {.val {unknown}}.",
       "i" = "Models in this run: {.val {labels}}.",
       "i" = "Use {.val simulation} for the simulation model, or add the model to {.arg alternativeModels}."
+    ))
+  }
+
+  # The constructor compares raw strings, so it cannot catch
+  # sseComparison(full = "<sim label>", reduced = "simulation"): both sides
+  # resolve to the same model. Left unchecked that yields a model compared
+  # against itself, every test statistic identically zero, and a meaningless
+  # PPE fit reported as if it were real.
+  self_compared <- Filter(function(r) identical(r$full, r$reduced), resolved)
+  if (length(self_compared) > 0L) {
+    bad <- self_compared[[1L]]
+    .abortSSE(c(
+      "Comparison {.val {bad$label}} resolves both members to {.val {bad$full}}.",
+      "i" = "A model compared against itself has no degrees of freedom and no test statistic.",
+      "i" = "The {.val simulation} token resolves to {.val {simLabel}}."
     ))
   }
 }
@@ -86,16 +121,28 @@ sseComparison <- function(full, reduced, df = NULL, alpha = 0.05,
 .resolveComparison <- function(x, comparison) {
   labels <- .knownModelLabels(x)
   sim <- .simulationLabel(x)
-  resolve1 <- function(value) if (identical(value, "simulation")) sim else value
 
-  comparison$full <- resolve1(comparison$full)
-  comparison$reduced <- resolve1(comparison$reduced)
+  comparison$full <- .resolveModelToken(comparison$full, sim)
+  comparison$reduced <- .resolveModelToken(comparison$reduced, sim)
 
   unknown <- setdiff(c(comparison$full, comparison$reduced), labels)
   if (length(unknown) > 0L) {
     .abortSSE(c(
       "Comparison {.val {comparison$label}} names unknown model{?s} {.val {unknown}}.",
       "i" = "Available labels: {.val {labels}}."
+    ))
+  }
+
+  # The constructor compares raw strings, so it cannot catch
+  # sseComparison(full = "<sim label>", reduced = "simulation"): both sides
+  # resolve to the same model. Left unchecked that yields a model compared
+  # against itself, every test statistic identically zero, and a meaningless
+  # PPE fit reported as if it were real.
+  if (identical(comparison$full, comparison$reduced)) {
+    .abortSSE(c(
+      "Comparison {.val {comparison$label}} resolves both members to {.val {comparison$full}}.",
+      "i" = "A model compared against itself has no degrees of freedom and no test statistic.",
+      "i" = "The {.val simulation} token resolves to {.val {sim}}."
     ))
   }
 
@@ -127,10 +174,7 @@ sseComparison <- function(full, reduced, df = NULL, alpha = 0.05,
   }
   if (inherits(comparisons, "sseComparison")) comparisons <- list(comparisons)
   out <- lapply(comparisons, function(cmp) .resolveComparison(x, cmp))
-  labels <- vapply(out, `[[`, character(1), "label")
-  if (anyDuplicated(labels) > 0L) {
-    .abortSSE("Comparison labels must be unique; {.val {labels[duplicated(labels)]}} repeats.")
-  }
+  .assertComparisonLabelsUnique(out)
   out
 }
 

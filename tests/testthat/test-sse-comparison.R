@@ -38,9 +38,27 @@ test_that("a reduced simulation model gives type1 mode", {
 
 test_that("an unknown label lists the available labels", {
   sse <- fake_sse_object()
+  err <- capture_sse_error(
+    .resolveComparison(sse, sseComparison("simulation", "nope", df = 1))
+  )
+  expect_s3_class(err, "error")
+  # Must name both the offending label and the known ones -- a message that
+  # only happened to contain "fake_sse_fit" (present in nearly every error
+  # this fixture can produce) would pass without ever mentioning "nope", the
+  # actual unknown label under test.
+  expect_match(conditionMessage(err), "nope")
+  expect_match(conditionMessage(err), "fake_sse_fit")
+})
+
+test_that(".resolveComparison rejects a self-comparison reached via the simulation token, from either side", {
+  sse <- fake_sse_object()
   expect_error(
-    .resolveComparison(sse, sseComparison("simulation", "nope", df = 1)),
-    "fake_sse_fit"
+    .resolveComparison(sse, sseComparison("fake_sse_fit", "simulation", df = 1)),
+    "resolves both members"
+  )
+  expect_error(
+    .resolveComparison(sse, sseComparison("simulation", "fake_sse_fit", df = 1)),
+    "resolves both members"
   )
 })
 
@@ -152,6 +170,28 @@ test_that("runSSE aborts on a comparison naming a model it will not fit", {
   expect_match(conditionMessage(err), "alt1")
 })
 
+test_that("runSSE rejects duplicate comparison labels before any fitting work", {
+  # Previously the duplicate-label check only ran inside .resolveComparisons(),
+  # which runSSE() never calls -- so a run with duplicate comparison labels
+  # would simulate and fit everything and only fail later, if ever, when
+  # something else resolved the comparisons for reporting.
+  err <- capture_sse_error(
+    runSSE(
+      fake_sse_fit(),
+      alternativeModels = sseModel(fake_sse_fit(), label = "alt1"),
+      comparisons = list(
+        sseComparison("simulation", "alt1", df = 1, label = "dup"),
+        sseComparison("alt1", "simulation", df = 1, label = "dup")
+      ),
+      outputDir = tempfile("nlmixr2sse-cmp-dup-"),
+      restart = TRUE
+    )
+  )
+
+  expect_s3_class(err, "error")
+  expect_match(conditionMessage(err), "unique")
+})
+
 test_that("runSSE addModels succeeds when a comparison names the newly added alternative", {
   tmp <- tempfile("nlmixr2sse-cmp-addmodels-")
   dir.create(tmp)
@@ -228,7 +268,7 @@ test_that(".assertComparisonLabelsExist pluralises the unknown-model count", {
       labels = c("fake_sse_fit", "alt1"),
       simLabel = "fake_sse_fit"
     ),
-    "name model that this run will not fit"
+    "Unknown model in"
   )
 
   expect_error(
@@ -240,6 +280,83 @@ test_that(".assertComparisonLabelsExist pluralises the unknown-model count", {
       labels = c("fake_sse_fit", "alt1"),
       simLabel = "fake_sse_fit"
     ),
-    "names models that this run will not fit"
+    "Unknown models in"
   )
+})
+
+test_that(".assertComparisonLabelsExist rejects a self-comparison reached via the simulation token, from either side", {
+  expect_error(
+    .assertComparisonLabelsExist(
+      list(sseComparison("fake_sse_fit", "simulation", df = 1)),
+      labels = c("fake_sse_fit", "alt1"),
+      simLabel = "fake_sse_fit"
+    ),
+    "resolves both members"
+  )
+  expect_error(
+    .assertComparisonLabelsExist(
+      list(sseComparison("simulation", "fake_sse_fit", df = 1)),
+      labels = c("fake_sse_fit", "alt1"),
+      simLabel = "fake_sse_fit"
+    ),
+    "resolves both members"
+  )
+})
+
+# --- comparisons against an already-completed run directory ------------------
+#
+# runSSE() returns early via .loadCompletedSSE() when it finds a completed run
+# that matches the request, before the normal run_info assembly (and the
+# eager validation block above it) ever executes. `comparisons` has to be
+# validated and merged on that path too, or it is silently discarded -- which
+# is exactly what happened before this fix: a typo'd label raised no error at
+# all against a completed run, and the recorded comparisons stayed NULL both
+# on the returned object and on disk.
+
+test_that("comparisons are validated and applied against a completed run without refitting", {
+  tmp <- tempfile("nlmixr2sse-cmp-completed-")
+  dir.create(tmp)
+  on.exit(unlink(tmp, recursive = TRUE, force = TRUE), add = TRUE)
+  write_fake_sse_run_dir(tmp)
+
+  # write_fake_sse_run_dir() predates rxThreads tracking, which
+  # .validateResumeRequest() flags with a harmless warning on every plain
+  # resume against this fixture -- unrelated to comparisons, suppressed here
+  # the same way the existing resume tests in test-run-sse.R do.
+  res <- suppressWarnings(runSSE(
+    fake_sse_fit(),
+    alternativeModels = sseModel(fake_sse_fit(), label = "alt1"),
+    samples = 2L,
+    outputDir = tmp,
+    restart = FALSE,
+    comparisons = sseComparison("simulation", "alt1", df = 1, label = "applied")
+  ))
+
+  expect_s3_class(res, "nlmixr2SSE")
+  expect_equal(res$runInfo$comparisons[[1L]]$label, "applied")
+})
+
+test_that("a typo'd comparison aborts against a completed run instead of being silently dropped", {
+  tmp <- tempfile("nlmixr2sse-cmp-completed-typo-")
+  dir.create(tmp)
+  on.exit(unlink(tmp, recursive = TRUE, force = TRUE), add = TRUE)
+  write_fake_sse_run_dir(tmp)
+
+  err <- capture_sse_error(
+    suppressWarnings(runSSE(
+      fake_sse_fit(),
+      alternativeModels = sseModel(fake_sse_fit(), label = "alt1"),
+      samples = 2L,
+      outputDir = tmp,
+      restart = FALSE,
+      comparisons = sseComparison("simulation", "totally_bogus_typo", df = 1)
+    ))
+  )
+
+  expect_s3_class(err, "error")
+  expect_match(conditionMessage(err), "totally_bogus_typo")
+
+  # The rejected comparison must not have been persisted either.
+  run_info_on_disk <- readRDS(file.path(tmp, "run_info.rds"))
+  expect_null(run_info_on_disk$comparisons)
 })
