@@ -13,6 +13,7 @@ runSSE(
   outputDir = NULL,
   restart = FALSE,
   fitName = NULL,
+  comparisons = NULL,
   ...
 )
 }
@@ -37,6 +38,13 @@ shared run-directory helper.}
 \item{fitName}{Optional fit label used for the run directory and simulation
 model metadata. When \code{NULL}, the label is derived from the \code{fit}
 expression.}
+
+\item{comparisons}{Optional \code{sseComparison()} object or list of
+\code{sseComparison()} objects naming the model comparisons this run should
+report. When \code{NULL}, comparisons are inferred later, at reporting time,
+against every alternative model. On a resumed run, omitting this argument
+keeps the comparisons already recorded for the run; passing it replaces
+them.}
 
 \item{...}{Reserved for future extensions. Unsupported arguments raise an
 error.}

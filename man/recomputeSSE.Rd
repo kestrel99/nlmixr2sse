@@ -9,7 +9,8 @@ recomputeSSE(
   outFilter = NULL,
   refOfv = NULL,
   samples = NULL,
-  overwrite = FALSE
+  overwrite = FALSE,
+  comparisons = NULL
 )
 }
 \arguments{
@@ -27,6 +28,13 @@ start of the saved run.}
 \item{overwrite}{Logical. When \code{FALSE}, writes
 \verb{sse_results_recompute<k>.csv} and \verb{sse_summary_recompute<k>.rds}.
 When \code{TRUE}, replaces \code{sse_results.csv} and \code{sse_summary.rds}.}
+
+\item{comparisons}{Optional \code{sseComparison()} object or list of
+\code{sseComparison()} objects to report instead of the run's recorded
+comparisons. A comparison is a reporting definition, not an input to
+simulation or estimation, so supplying it here does not refit or
+resimulate anything -- it only replaces \code{runInfo$comparisons} on the
+returned object.}
 }
 \value{
 An object of class \code{c("nlmixr2SSE", "list")}.

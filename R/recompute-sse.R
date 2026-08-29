@@ -492,6 +492,12 @@
 #' @param overwrite Logical. When `FALSE`, writes
 #'   `sse_results_recompute<k>.csv` and `sse_summary_recompute<k>.rds`.
 #'   When `TRUE`, replaces `sse_results.csv` and `sse_summary.rds`.
+#' @param comparisons Optional `sseComparison()` object or list of
+#'   `sseComparison()` objects to report instead of the run's recorded
+#'   comparisons. A comparison is a reporting definition, not an input to
+#'   simulation or estimation, so supplying it here does not refit or
+#'   resimulate anything -- it only replaces `runInfo$comparisons` on the
+#'   returned object.
 #'
 #' @return An object of class `c("nlmixr2SSE", "list")`.
 #' @export
@@ -500,7 +506,8 @@ recomputeSSE <- function(
   outFilter = NULL,
   refOfv = NULL,
   samples = NULL,
-  overwrite = FALSE
+  overwrite = FALSE,
+  comparisons = NULL
 ) {
   checkmate::assertString(runDir)
   if (!dir.exists(runDir)) {
@@ -522,6 +529,7 @@ recomputeSSE <- function(
     samples <- as.integer(samples)
   }
   checkmate::assertFlag(overwrite)
+  comparisons <- .normalizeComparisonsArg(comparisons)
 
   abs_output_dir <- normalizePath(runDir, mustWork = FALSE)
   run_info <- .readRunInfo(abs_output_dir)
@@ -529,6 +537,13 @@ recomputeSSE <- function(
     .abortSSE(
       "Recomputation requires a completed SSE run with {.file run_info.rds}."
     )
+  }
+  # A comparison is a reporting definition, not a simulation/estimation
+  # input, so replacing it here never triggers a refit -- it only changes
+  # what the returned object (and, when `overwrite`, the saved summary)
+  # reports. Omitting `comparisons` keeps whatever the run already recorded.
+  if (!is.null(comparisons)) {
+    run_info$comparisons <- comparisons
   }
 
   raw_results <- nlmixr2utils::readRawResults(abs_output_dir)

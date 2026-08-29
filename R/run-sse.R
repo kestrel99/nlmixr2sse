@@ -24,6 +24,12 @@
 #' @param fitName Optional fit label used for the run directory and simulation
 #'   model metadata. When `NULL`, the label is derived from the `fit`
 #'   expression.
+#' @param comparisons Optional `sseComparison()` object or list of
+#'   `sseComparison()` objects naming the model comparisons this run should
+#'   report. When `NULL`, comparisons are inferred later, at reporting time,
+#'   against every alternative model. On a resumed run, omitting this argument
+#'   keeps the comparisons already recorded for the run; passing it replaces
+#'   them.
 #' @param ... Reserved for future extensions. Unsupported arguments raise an
 #'   error.
 #'
@@ -38,6 +44,7 @@ runSSE <- function(
   outputDir = NULL,
   restart = FALSE,
   fitName = NULL,
+  comparisons = NULL,
   ...
 ) {
   dots <- list(...)
@@ -67,6 +74,7 @@ runSSE <- function(
   if (!is.null(outputDir)) {
     checkmate::assertString(outputDir)
   }
+  comparisons <- .normalizeComparisonsArg(comparisons)
   if (!is.null(fitName)) {
     .validateModelLabel(fitName, arg = "fitName")
   } else {
@@ -413,6 +421,14 @@ runSSE <- function(
   run_info$control <- control
   run_info$control$estimateSimulation <- run_info$estimateSimulation
   run_info$control$parameterSource <- run_info$parameterSource
+  # A comparison is a reporting definition, not a simulation/estimation input,
+  # so a resumed or add-models call that omits `comparisons` keeps whatever
+  # was already recorded rather than silently wiping it back to NULL.
+  run_info$comparisons <- if (is.null(comparisons)) {
+    existing_run_info$comparisons
+  } else {
+    comparisons
+  }
   run_info$call <- match.call()
   run_info$startedAt <- run_info$startedAt %||% Sys.time()
   saveRDS(run_info, file.path(abs_output_dir, "run_info.rds"))
