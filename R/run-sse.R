@@ -447,19 +447,23 @@ runSSE <- function(
     )
     pending_data <- integer(0)
   } else {
-    # suppressWarnings: this is the SECOND call to .resolveSimulationParameters()
-    # in runSSE() -- the first, above, harvests $info for run_info and always
-    # runs on a non-addModels path. Both calls are deterministic and produce
-    # identical diagnostics, so warning here would emit every weak-identification
-    # message twice. Suppressing the second (rather than the first) keeps exactly
-    # one copy on a fresh run, on a full resume, and on addModels alike.
-    parameter_source <- suppressWarnings(.resolveSimulationParameters(
+    # This is the SECOND call to .resolveSimulationParameters() in runSSE() --
+    # the first, above, harvests $info for run_info and always runs on a
+    # non-addModels path. Both calls are deterministic and produce identical
+    # diagnostics, so without suppression every one is emitted twice.
+    # Suppressing the second (rather than the first) keeps exactly one copy on a
+    # fresh run, on a full resume, and on addModels alike.
+    #
+    # BOTH suppressors are needed: the weak-identification diagnostic is a
+    # warning, but the "OMEGA block held at its fitted values" diagnostic is a
+    # cli_inform() message, which suppressWarnings() does not catch.
+    parameter_source <- suppressMessages(suppressWarnings(.resolveSimulationParameters(
       fit = fit,
       samples = samples,
       control = control,
       outputDir = abs_output_dir,
       schema = sim_schema
-    ))
+    )))
     sim_param_sets <- parameter_source$records
     pending_data <- as.integer(
       nlmixr2utils::pendingTasks(sample_keys, data_cache$keys())
