@@ -827,7 +827,11 @@
   # sub-block, OMEGA is drawn separately from an inverse-Wishart, and the
   # THETA<->OMEGA cross-terms are deliberately discarded (this mode shares NWPRI's independence factorization, though it is not
   # NWPRI -- the OMEGA density differs).
-  omega_entries <- .omegaEntryTable(.uiOmegaInfo(fit[["ui"]]))
+  # .fitField(), not fit[["ui"]]: real nlmixr2 fits expose $ via a custom S3
+  # method but have NO [[ method, so fit[["ui"]] falls through to [[.data.frame
+  # and silently returns NULL -- yielding an empty OMEGA table and dropping
+  # every OMEGA entry. .fitField() tries [[ then falls back to $ dispatch.
+  omega_entries <- .omegaEntryTable(.uiOmegaInfo(.fitField(fit, "ui")))
   omega_names <- omega_entries$covName
 
   theta_names <- intersect(cov_names, names(theta))

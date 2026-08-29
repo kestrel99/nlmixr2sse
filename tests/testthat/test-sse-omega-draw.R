@@ -355,3 +355,47 @@ test_that("alignedCovariance still rejects a genuinely unknown name", {
   expect_s3_class(err, "error")
   expect_match(conditionMessage(err), "mystery")
 })
+
+test_that("alignedCovariance reaches ui on a fit exposing it only via $", {
+  # Real nlmixr2 fits have a $.nlmixr2FitCore method but NO [[ method, so
+  # fit[["ui"]] returns NULL silently. A plain-list fixture cannot detect that
+  # difference -- this one can.
+  ui <- list(iniDf = data.frame(
+    name = c("tka", "eta.ka"),
+    ntheta = c(1L, NA),
+    neta1 = c(NA, 1L),
+    neta2 = c(NA, 1L),
+    fix = c(FALSE, FALSE),
+    stringsAsFactors = FALSE
+  ))
+
+  nm <- c("tka", "om.eta.ka")
+  cov <- diag(c(0.04, 0.01))
+  dimnames(cov) <- list(nm, nm)
+
+  inner <- list(
+    theta = c(tka = 0.45),
+    omega = matrix(0.3, 1L, 1L, dimnames = list("eta.ka", "eta.ka")),
+    cov = cov
+  )
+
+  fit <- structure(list(), class = "sseDollarOnlyFit")
+  attr(fit, "inner") <- inner
+  attr(fit, "ui") <- ui
+
+  # $ resolves ui; [[ deliberately does not, exactly like a real fit
+  registerS3method(
+    "$", "sseDollarOnlyFit",
+    function(x, name) {
+      if (identical(name, "ui")) return(attr(x, "ui"))
+      attr(x, "inner")[[name]]
+    },
+    envir = environment()
+  )
+
+  aligned <- .alignedCovariance(fit)
+
+  expect_equal(aligned$drawNames, "tka")
+  expect_equal(unname(aligned$omegaSe[["eta.ka"]]), sqrt(0.01))
+  expect_equal(nrow(aligned$omegaEntries), 1L)
+})
