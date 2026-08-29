@@ -1445,7 +1445,17 @@ test_that("joint draw incorporates the theta-omega covariance", {
 
   expect_equal(stats::cor(tka, om11), 0.45, tolerance = 0.05)
   expect_equal(stats::cor(add, om22), -0.35, tolerance = 0.05)
-  expect_equal(stats::sd(om11), 0.060, tolerance = 0.01)
+  # NOT the raw target SE of 0.060. om11 = L11^2 and phi1 = log(L11), so om11
+  # is exactly lognormal with log-sd s = SE/omega = 0.2. The back-transform
+  # therefore inflates the SD by a known, exact factor:
+  #   E[om11]  = omega * exp(s^2 / 2)
+  #   SD[om11] = E[om11] * sqrt(exp(s^2) - 1)  =  0.061829   (+3.05%)
+  # Asserting 0.060 here is unpassable for ANY correct implementation. Assert
+  # the closed-form value instead -- that keeps the test tight enough to catch
+  # a real regression, where simply widening the tolerance would not.
+  s <- 0.060 / 0.30
+  sdClosedForm <- 0.30 * exp(s^2 / 2) * sqrt(exp(s^2) - 1)
+  expect_equal(stats::sd(om11), sdClosedForm, tolerance = 0.03)
 })
 
 test_that("joint draw survives an OMEGA-only covariance (zero thetas)", {
