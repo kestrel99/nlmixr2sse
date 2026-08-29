@@ -75,3 +75,64 @@ test_that("omegaBlocks handles zero etas", {
   )
   expect_equal(.omegaBlocks(tab, nEta = 0L), list())
 })
+
+test_that("drawableOmegaBlocks requires every declared entry to be covered", {
+  entries <- data.frame(
+    row = c(1L, 2L, 2L, 3L),
+    col = c(1L, 1L, 2L, 3L),
+    rowName = c("eta.a", "eta.b", "eta.b", "eta.c"),
+    colName = c("eta.a", "eta.a", "eta.b", "eta.c"),
+    fix = c(FALSE, FALSE, FALSE, FALSE),
+    covName = c("om.eta.a", "cov.eta.b.eta.a", "om.eta.b", "om.eta.c"),
+    diagonal = c(TRUE, FALSE, TRUE, TRUE),
+    stringsAsFactors = FALSE
+  )
+  blocks <- list(c(1L, 2L), 3L)
+
+  # everything covered -> both blocks drawable
+  res <- .drawableOmegaBlocks(
+    blocks, entries,
+    covNames = c("om.eta.a", "cov.eta.b.eta.a", "om.eta.b", "om.eta.c")
+  )
+  expect_equal(res$drawable, list(c(1L, 2L), 3L))
+  expect_length(res$held, 0L)
+
+  # off-diagonal missing -> the WHOLE correlated block is held, not part of it
+  res2 <- .drawableOmegaBlocks(
+    blocks, entries,
+    covNames = c("om.eta.a", "om.eta.b", "om.eta.c")
+  )
+  expect_equal(res2$drawable, list(3L))
+  expect_equal(res2$held[[1L]]$index, c(1L, 2L))
+  expect_match(res2$held[[1L]]$reason, "cov.eta.b.eta.a")
+})
+
+test_that("drawableOmegaBlocks holds a block containing a fixed element", {
+  entries <- data.frame(
+    row = c(1L, 2L, 2L),
+    col = c(1L, 1L, 2L),
+    rowName = c("eta.a", "eta.b", "eta.b"),
+    colName = c("eta.a", "eta.a", "eta.b"),
+    fix = c(FALSE, FALSE, TRUE),
+    covName = c("om.eta.a", "cov.eta.b.eta.a", "om.eta.b"),
+    diagonal = c(TRUE, FALSE, TRUE),
+    stringsAsFactors = FALSE
+  )
+  res <- .drawableOmegaBlocks(
+    list(c(1L, 2L)), entries,
+    covNames = c("om.eta.a", "cov.eta.b.eta.a")
+  )
+  expect_length(res$drawable, 0L)
+  expect_match(res$held[[1L]]$reason, "fixed")
+})
+
+test_that("drawableOmegaBlocks handles a theta-only covariance", {
+  entries <- data.frame(
+    row = 1L, col = 1L, rowName = "eta.a", colName = "eta.a",
+    fix = FALSE, covName = "om.eta.a", diagonal = TRUE,
+    stringsAsFactors = FALSE
+  )
+  res <- .drawableOmegaBlocks(list(1L), entries, covNames = c("tka", "tcl"))
+  expect_length(res$drawable, 0L)
+  expect_equal(res$held[[1L]]$index, 1L)
+})

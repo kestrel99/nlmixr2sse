@@ -89,3 +89,62 @@
   # order blocks by their first member so output is deterministic
   unname(split(seq_len(nEta), factor(roots, levels = unique(roots))))
 }
+
+#' Apply the OMEGA coverage policy
+#'
+#' A block is drawable only when EVERY declared entry in it is unfixed and
+#' present in `fit$cov`. A block with any fixed or uncovered element is held
+#' entirely at its fitted values.
+#'
+#' This is deliberately stricter than "some diagonal has a usable standard
+#' error". `nlmixr2est` drops fixed OMEGA elements from `fit$cov` while the
+#' declared topology still lists them, so a correlated block with one fixed
+#' component has missing entries. Drawing such a block would mutate the fixed
+#' element; drawing the free sub-matrix and splicing the fixed values back in
+#' can produce a non-positive-definite matrix. Neither is acceptable, so the
+#' whole block is held.
+#'
+#' Both draw modes MUST consume this result rather than re-deriving
+#' drawability, so that `"joint"` and `"independent_iw"` agree on what varies.
+#'
+#' @param blocks list of integer eta-index vectors, from `.omegaBlocks()`
+#' @param entries an `.omegaEntryTable()` result
+#' @param covNames `rownames(fit$cov)`
+#' @return list(drawable = <list of index vectors>,
+#'              held = <list of list(index, reason)>)
+#' @noRd
+.drawableOmegaBlocks <- function(blocks, entries, covNames) {
+  drawable <- list()
+  held <- list()
+
+  for (idx in blocks) {
+    inBlock <- entries$row %in% idx & entries$col %in% idx
+    blockEntries <- entries[inBlock, , drop = FALSE]
+
+    fixedNames <- blockEntries$covName[blockEntries$fix]
+    missingNames <- setdiff(
+      blockEntries$covName[!blockEntries$fix],
+      covNames
+    )
+
+    if (length(fixedNames) == 0L && length(missingNames) == 0L) {
+      drawable[[length(drawable) + 1L]] <- idx
+      next
+    }
+
+    reason <- paste(
+      c(
+        if (length(fixedNames) > 0L) {
+          paste0("fixed: ", paste(fixedNames, collapse = ", "))
+        },
+        if (length(missingNames) > 0L) {
+          paste0("not covered by fit$cov: ", paste(missingNames, collapse = ", "))
+        }
+      ),
+      collapse = "; "
+    )
+    held[[length(held) + 1L]] <- list(index = idx, reason = reason)
+  }
+
+  list(drawable = drawable, held = held)
+}
