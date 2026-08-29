@@ -211,6 +211,24 @@ runSSE <- function(
         "i" = "The recorded {.field rxThreads} keeps the original value."
       ))
     }
+    if (identical(control$parameterSource, "covariance")) {
+      recorded_draw <- existing_run_info$covarianceDraw
+      if (is.null(recorded_draw) || is.na(recorded_draw)) {
+        # Legacy directory: the mode is genuinely unknown, so do not phrase this
+        # as a mismatch against "NA". Same NULL-or-NA legacy test as the resume
+        # path, but a warning rather than an abort, because add-models
+        # simulates nothing new.
+        cli::cli_warn(c(
+          "!" = "The original run predates {.arg covarianceDraw} tracking, so the draw mode behind its saved datasets is unknown.",
+          "i" = "Those datasets are reused unchanged; the recorded {.field covarianceDraw} stays unset."
+        ))
+      } else if (!identical(recorded_draw, control$covarianceDraw)) {
+        cli::cli_warn(c(
+          "!" = "The original run used {.arg covarianceDraw = {recorded_draw}}, but this add-models run requests {.arg covarianceDraw = {control$covarianceDraw}}.",
+          "i" = "Saved simulated datasets are reused unchanged; the recorded {.field covarianceDraw} keeps the original value."
+        ))
+      }
+    }
     alternatives <- .selectAddModelAlternatives(alternatives, existing_run_info)
   } else if (!is.null(existing_run_info)) {
     .validateResumeRequest(
@@ -318,6 +336,10 @@ runSSE <- function(
     existing_run_info %||% list(),
     resolved_rx_threads,
     control$addModels
+  )
+  run_info$covarianceDraw <- .recordedCovarianceDraw(
+    existing_run_info %||% list(),
+    control
   )
   run_info$runDirMode <- run_dir$mode
   run_info$alternativeLabels <- vapply(

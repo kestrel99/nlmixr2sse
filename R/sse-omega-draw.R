@@ -387,3 +387,26 @@
   }
   paste0("omega(", entries$rowName, ",", entries$colName, ")")
 }
+
+#' Decide what `covarianceDraw` a run should record
+#'
+#' Two rules, both about not writing something untrue:
+#'
+#' 1. An add-models run must not overwrite the value describing how the SAVED
+#'    datasets were produced. If the original recorded nothing, the honest
+#'    record is `NA` (legacy) -- writing the current mode would claim those
+#'    datasets were generated a way they were not.
+#' 2. A run that is not in covariance mode never took a covariance draw, so
+#'    recording a mode would be meaningless. `runSSEControl()` always resolves
+#'    a default, so without this a `fixed` or `rawres` run would be stamped
+#'    `"independent_iw"`.
+#' @noRd
+.recordedCovarianceDraw <- function(existingRunInfo, control) {
+  if (isTRUE(control$addModels)) {
+    return(existingRunInfo$covarianceDraw %||% NA_character_)
+  }
+  if (!identical(control$parameterSource, "covariance")) {
+    return(NA_character_)
+  }
+  control$covarianceDraw
+}

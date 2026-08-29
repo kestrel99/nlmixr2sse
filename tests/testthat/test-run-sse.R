@@ -1035,3 +1035,133 @@ test_that("addModels preserves the originally recorded rxThreads", {
     2L
   )
 })
+
+test_that("validateResumeRequest aborts on a covarianceDraw mismatch", {
+  run_info <- list(
+    fitName = "fake_sse_fit",
+    samples = 2L,
+    parameterSource = "covariance",
+    estimateSimulation = TRUE,
+    covarianceDraw = "joint"
+  )
+
+  err <- capture_sse_error(
+    .validateResumeRequest(
+      existingRunInfo = run_info,
+      fitName = "fake_sse_fit",
+      samples = 2L,
+      control = runSSEControl(
+        parameterSource = "covariance",
+        covarianceDraw = "independent_iw"
+      ),
+      requestedLabels = character(0)
+    )
+  )
+
+  expect_s3_class(err, "error")
+  expect_match(conditionMessage(err), "covarianceDraw")
+  expect_match(conditionMessage(err), "joint")
+})
+
+test_that("validateResumeRequest aborts on a legacy covariance run", {
+  # No recorded covarianceDraw means the run predates OMEGA drawing, so its
+  # replicates hold OMEGA fixed. Resuming would mix two simulation
+  # distributions -- this must abort, not warn.
+  run_info <- list(
+    fitName = "fake_sse_fit",
+    samples = 2L,
+    parameterSource = "covariance",
+    estimateSimulation = TRUE
+  )
+
+  err <- capture_sse_error(
+    .validateResumeRequest(
+      existingRunInfo = run_info,
+      fitName = "fake_sse_fit",
+      samples = 2L,
+      control = runSSEControl(parameterSource = "covariance"),
+      requestedLabels = character(0)
+    )
+  )
+
+  expect_s3_class(err, "error")
+  expect_match(conditionMessage(err), "restart")
+})
+
+test_that("a recorded NA covarianceDraw is treated as legacy, not a mismatch", {
+  # An addModels run against a legacy directory records NA by design. Resuming
+  # that directory must give the legacy abort, not a confusing message saying
+  # the original mode was "NA".
+  run_info <- list(
+    fitName = "fake_sse_fit",
+    samples = 2L,
+    parameterSource = "covariance",
+    estimateSimulation = TRUE,
+    covarianceDraw = NA_character_
+  )
+
+  err <- capture_sse_error(
+    .validateResumeRequest(
+      existingRunInfo = run_info,
+      fitName = "fake_sse_fit",
+      samples = 2L,
+      control = runSSEControl(parameterSource = "covariance"),
+      requestedLabels = character(0)
+    )
+  )
+
+  expect_s3_class(err, "error")
+  expect_match(conditionMessage(err), "restart")
+  expect_no_match(conditionMessage(err), "NA")
+})
+
+test_that("a legacy run in a non-covariance mode resumes unaffected", {
+  # The legacy check is gated on parameterSource == "covariance"; a fixed or
+  # rawres run has no OMEGA-draw provenance to be incompatible about.
+  run_info <- list(
+    fitName = "fake_sse_fit",
+    samples = 2L,
+    parameterSource = "fixed",
+    estimateSimulation = TRUE
+  )
+
+  expect_silent(
+    .validateResumeRequest(
+      existingRunInfo = run_info,
+      fitName = "fake_sse_fit",
+      samples = 2L,
+      control = runSSEControl(parameterSource = "fixed"),
+      requestedLabels = character(0)
+    )
+  )
+})
+
+test_that("recordedCovarianceDraw keeps a legacy addModels run as NA", {
+  # Exercises the real helper, not a copy of its expression -- a test that
+  # re-evaluates `%||%` inline would pass before the implementation existed and
+  # could never catch a provenance regression.
+  legacy <- list(covarianceDraw = NULL)
+  known <- list(covarianceDraw = "joint")
+  addCtl <- runSSEControl(
+    parameterSource = "covariance",
+    addModels = TRUE
+  )
+
+  expect_true(is.na(.recordedCovarianceDraw(legacy, addCtl)))
+  expect_equal(.recordedCovarianceDraw(known, addCtl), "joint")
+})
+
+test_that("recordedCovarianceDraw records NA outside covariance mode", {
+  # runSSEControl() always resolves a default, so without this a fixed or
+  # rawres run would be stamped "independent_iw" despite never drawing one.
+  expect_true(is.na(
+    .recordedCovarianceDraw(list(), runSSEControl(parameterSource = "fixed"))
+  ))
+  expect_equal(
+    .recordedCovarianceDraw(
+      list(),
+      runSSEControl(parameterSource = "covariance")
+    ),
+    "independent_iw"
+  )
+})
