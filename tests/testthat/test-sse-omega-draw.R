@@ -171,3 +171,44 @@ test_that("drawableOmegaBlocks aborts on a block/entries desync", {
   )
   expect_s3_class(err, "error")
 })
+
+test_that("omegaWishartSpec moment-matches nu from the reported SEs", {
+  omega0 <- matrix(c(0.30, 0.05, 0.05, 0.12), 2L, 2L)
+  se <- c(0.06, 0.03)
+  p <- 2L
+
+  spec <- .omegaWishartSpec(omega0, se)
+
+  expectedNu <- min(p + 3 + 2 * (diag(omega0) / se)^2)
+  expect_equal(spec$nu, expectedNu)
+  # the spec carries the fitted block; cvPost pre-scaling happens at draw time
+  expect_equal(spec$omega0, omega0)
+  expect_equal(spec$p, p)
+})
+
+test_that("omegaWishartSpec picks the minimum (widest-marginal) nu", {
+  omega0 <- diag(c(0.30, 0.12))
+  # second element has the relatively larger SE => smaller nu => binding
+  spec <- .omegaWishartSpec(omega0, c(0.01, 0.06))
+  nuEach <- 2L + 3 + 2 * (diag(omega0) / c(0.01, 0.06))^2
+  expect_equal(spec$nu, min(nuEach))
+})
+
+test_that("omegaWishartSpec ignores unusable SEs", {
+  omega0 <- diag(c(0.30, 0.12))
+  # NA SE on the second element => nu comes from the first alone
+  spec <- .omegaWishartSpec(omega0, c(0.06, NA_real_))
+  expect_equal(spec$nu, 2L + 3 + 2 * (0.30 / 0.06)^2)
+})
+
+test_that("omegaWishartSpec returns NULL when no SE is usable", {
+  omega0 <- diag(c(0.30, 0.12))
+  expect_null(.omegaWishartSpec(omega0, c(NA_real_, NA_real_)))
+  expect_null(.omegaWishartSpec(omega0, c(0, 0)))
+})
+
+test_that("omegaWishartSpec rejects a degenerate variance", {
+  omega0 <- diag(c(0, 0.12))
+  err <- capture_sse_error(.omegaWishartSpec(omega0, c(0.06, 0.03)))
+  expect_s3_class(err, "error")
+})

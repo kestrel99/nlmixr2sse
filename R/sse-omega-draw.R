@@ -154,3 +154,73 @@
 
   list(drawable = drawable, held = held)
 }
+
+#' Build the inverse-Wishart parameters for one OMEGA block
+#'
+#' Centres the distribution on `omega0` and matches the spread to the reported
+#' OMEGA standard errors. For `Omega ~ InvWishart(Psi, nu)` over a p x p block,
+#' setting `Psi = (nu - p - 1) * omega0` gives `E[Omega] = omega0` and
+#' `Var(Omega_ii) = 2 * omega0_ii^2 / (nu - p - 3)`, so
+#' `nu_i = p + 3 + 2 * (omega0_ii / se_i)^2`.
+#'
+#' The inverse-Wishart has a single `nu` per block, so only the binding
+#' (minimum-nu) element matches its SE exactly; every other element comes out
+#' MORE dispersed than reported. That is wider for the constructed diagonal
+#' marginal, not a general conservatism guarantee, and is
+#' intentional.
+#'
+#' @param omega0 the block's fitted OMEGA sub-matrix
+#' @param se reported standard errors for the block's diagonal, `NA` where
+#'   unavailable
+#' @return list(omega0, nu, p), or `NULL` when no diagonal element has a usable SE
+#' @noRd
+.omegaWishartSpec <- function(omega0, se) {
+  p <- nrow(omega0)
+  variances <- diag(omega0)
+
+  usable <- !is.na(se) & is.finite(se) & se > 0
+  if (!any(usable)) {
+    return(NULL)
+  }
+
+  if (any(!is.finite(variances[usable]) | variances[usable] <= 0)) {
+    bad <- which(usable & (!is.finite(variances) | variances <= 0))
+    .abortSSE(
+      paste0(
+        "OMEGA variance {.val {bad}} is zero or non-finite, so its uncertainty ",
+        "cannot be characterised. Fix the parameter, or use ",
+        "{.code parameterSource = \"fixed\"}."
+      )
+    )
+  }
+
+  nuEach <- p + 3 + 2 * (variances[usable] / se[usable])^2
+  nu <- min(nuEach)
+
+  # nu = p + 3 + (positive term) by construction, so `nu <= p + 3` catches only
+  # underflow or invalid input -- NOT ordinary weak identification. Weak
+  # identification is surfaced separately, by the relative-SE warning in
+  # .warnWeakOmega(); do not try to detect it here.
+  if (!is.finite(nu)) {
+    .abortSSE(
+      paste0(
+        "The reported OMEGA standard errors imply a non-finite inverse-Wishart ",
+        "degrees of freedom for a {.val {p}}-eta block."
+      )
+    )
+  }
+
+  ev <- suppressWarnings(
+    eigen(omega0, symmetric = TRUE, only.values = TRUE)$values
+  )
+  if (!all(is.finite(ev)) || min(ev) <= 0) {
+    .abortSSE(
+      paste0(
+        "A fitted OMEGA block is not positive-definite, so it cannot be used ",
+        "as an inverse-Wishart centre."
+      )
+    )
+  }
+
+  list(omega0 = omega0, nu = nu, p = p)
+}
