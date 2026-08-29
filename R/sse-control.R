@@ -100,6 +100,12 @@ runSSEControl <- function(
   )
   checkmate::assertFlag(randomEstimationInits)
   checkmate::assertFlag(updateFix)
+  checkmate::assertNumber(
+    omegaRseWarn,
+    lower = 0,
+    finite = TRUE,
+    .var.name = "omegaRseWarn"
+  )
   if (!is.null(appendColumns)) {
     checkmate::assertCharacter(
       appendColumns,
@@ -172,6 +178,7 @@ runSSEControl <- function(
       refOfv = refOfv,
       parameterSource = parameterSource,
       covarianceDraw = covarianceDraw,
+      omegaRseWarn = omegaRseWarn,
       rawresInput = rawresInput,
       offsetRawres = as.integer(offsetRawres),
       inFilter = inFilter,

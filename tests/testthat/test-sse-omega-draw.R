@@ -399,3 +399,73 @@ test_that("alignedCovariance reaches ui on a fit exposing it only via $", {
   expect_equal(unname(aligned$omegaSe[["eta.ka"]]), sqrt(0.01))
   expect_equal(nrow(aligned$omegaEntries), 1L)
 })
+
+test_that("warnWeakOmega fires only above the threshold", {
+  omega0 <- diag(c(0.30, 0.30))
+  dimnames(omega0) <- list(c("eta.a", "eta.b"), c("eta.a", "eta.b"))
+
+  # RSE 0.20 and 0.20 -- both below 0.5, silent
+  expect_silent(
+    .warnWeakOmega(omega0, se = c(0.06, 0.06), index = 1:2, threshold = 0.5,
+                   mode = "independent_iw")
+  )
+
+  # RSE exactly at the threshold -- boundary is NOT "above", so still silent
+  expect_silent(
+    .warnWeakOmega(omega0, se = c(0.15, 0.06), index = 1:2, threshold = 0.5,
+                   mode = "independent_iw")
+  )
+
+  # RSE 0.667 on eta.a -- above, warns and NAMES the offending eta
+  expect_warning(
+    .warnWeakOmega(omega0, se = c(0.20, 0.06), index = 1:2, threshold = 0.5,
+                   mode = "independent_iw"),
+    "eta\\.a"
+  )
+})
+
+test_that("warnWeakOmega reports the mode-specific consequence", {
+  omega0 <- matrix(0.30, 1L, 1L, dimnames = list("eta.a", "eta.a"))
+
+  # joint, 1x1: exp(SE^2 / (2*omega^2)) is exact here, so claim the inflation
+  w <- tryCatch(
+    .warnWeakOmega(omega0, se = 0.30, index = 1L, threshold = 0.5,
+                   mode = "joint"),
+    warning = function(x) conditionMessage(x)
+  )
+  expect_match(w, "expected mean inflation")
+
+  # independent_iw: report the resulting nu instead
+  w2 <- tryCatch(
+    .warnWeakOmega(omega0, se = 0.30, index = 1L, threshold = 0.5,
+                   mode = "independent_iw"),
+    warning = function(x) conditionMessage(x)
+  )
+  expect_match(w2, "nu")
+})
+
+test_that("warnWeakOmega calls the joint figure a proxy for p > 1", {
+  # In a correlated block the diagonal is a sum of squared Cholesky elements,
+  # so the scalar formula is no longer exact and must not be presented as the
+  # actual inflation.
+  omega0 <- matrix(c(0.30, 0.05, 0.05, 0.30), 2L, 2L,
+                   dimnames = list(c("eta.a", "eta.b"), c("eta.a", "eta.b")))
+  w <- tryCatch(
+    .warnWeakOmega(omega0, se = c(0.30, 0.06), index = 1:2, threshold = 0.5,
+                   mode = "joint"),
+    warning = function(x) conditionMessage(x)
+  )
+  expect_match(w, "proxy")
+  expect_no_match(w, "expected mean inflation")
+})
+
+test_that("warnWeakOmega ignores unusable standard errors", {
+  omega0 <- matrix(0.30, 1L, 1L, dimnames = list("eta.a", "eta.a"))
+  expect_silent(
+    .warnWeakOmega(omega0, se = NA_real_, index = 1L, threshold = 0.5,
+                   mode = "joint")
+  )
+  expect_silent(
+    .warnWeakOmega(omega0, se = 0, index = 1L, threshold = 0.5, mode = "joint")
+  )
+})

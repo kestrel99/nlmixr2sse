@@ -287,3 +287,76 @@
   }
   out
 }
+
+#' Warn about weakly identified OMEGA variances in a drawn block
+#'
+#' `nu = p + 3 + 2*(omega/se)^2` is always greater than `p + 3`, so a threshold
+#' on `nu` cannot detect ordinary weak identification. Test the relative
+#' standard error directly instead.
+#'
+#' The consequence differs by mode, so the message says which: for `"joint"`
+#' the exact expected mean inflation `exp(se^2 / (2*omega^2))` for a 1x1 block,
+#' or a scalar-RSE bias proxy for larger blocks (where a diagonal element is a
+#' sum of squared Cholesky elements, so the scalar formula no longer holds);
+#' for `"independent_iw"` the
+#' resulting degrees of freedom.
+#'
+#' @param omega0 the block's fitted OMEGA sub-matrix
+#' @param se reported standard errors for the block's diagonal
+#' @param index the block's eta indices, used only for the message
+#' @param threshold `control$omegaRseWarn`
+#' @param mode `control$covarianceDraw`
+#' @return nothing, called for the warning
+#' @noRd
+.warnWeakOmega <- function(omega0, se, index, threshold, mode) {
+  variances <- diag(omega0)
+  etaNames <- rownames(omega0)
+  usable <- !is.na(se) & is.finite(se) & se > 0 & variances > 0
+
+  if (!any(usable)) {
+    return(invisible(NULL))
+  }
+
+  rse <- rep(NA_real_, length(variances))
+  rse[usable] <- se[usable] / variances[usable]
+  # strictly above: a value exactly at the threshold is not "above" it
+  flagged <- which(!is.na(rse) & rse > threshold)
+
+  if (length(flagged) == 0L) {
+    return(invisible(NULL))
+  }
+
+  detail <- vapply(flagged, function(i) {
+    if (identical(mode, "joint")) {
+      # exp(RSE^2/2) - 1 is EXACT only for a 1x1 block, where Omega* is
+      # lognormal. In a larger block a diagonal element is a sum of squared
+      # Cholesky elements, and its induced mean depends on the whole
+      # transformed covariance -- so for p > 1 this is a scalar proxy, not the
+      # actual inflation. Label it accordingly rather than overstating it.
+      inflation <- exp(se[[i]]^2 / (2 * variances[[i]]^2)) - 1
+      label <- if (nrow(omega0) > 1L) {
+        "scalar-RSE bias proxy"
+      } else {
+        "expected mean inflation"
+      }
+      sprintf(
+        "%s: relative SE %.0f%%, %s %.0f%%",
+        etaNames[[i]], 100 * rse[[i]], label, 100 * inflation
+      )
+    } else {
+      p <- nrow(omega0)
+      nu <- p + 3 + 2 * (variances[[i]] / se[[i]])^2
+      sprintf(
+        "%s: relative SE %.0f%%, implying nu = %.1f",
+        etaNames[[i]], 100 * rse[[i]], nu
+      )
+    }
+  }, character(1))
+
+  cli::cli_warn(c(
+    "!" = "Weakly identified OMEGA variance{?s} in the block {.val {paste(etaNames, collapse = ', ')}}.",
+    "i" = "{detail}",
+    "i" = "Parameter uncertainty drawn from these estimates may not be trustworthy."
+  ))
+  invisible(NULL)
+}
