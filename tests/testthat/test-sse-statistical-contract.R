@@ -24,6 +24,14 @@ test_that("ppe_dofv leaves the caller's RNG untouched", {
   expect_equal(.Random.seed, before)
 })
 
+test_that("ppe_dofv restores the absence of .Random.seed", {
+  if (exists(".Random.seed", envir = globalenv(), inherits = FALSE)) {
+    rm(".Random.seed", envir = globalenv())
+  }
+  ppe_dofv(n = 5L, seed = 3L)
+  expect_false(exists(".Random.seed", envir = globalenv(), inherits = FALSE))
+})
+
 test_that("current delta sign convention is reference minus alternative", {
   sse <- fake_sse_object()
   delta <- .ofvDeltaPlotData(sse)
@@ -36,12 +44,19 @@ test_that("current delta sign convention is reference minus alternative", {
 
 test_that("current PPE inverts the exceedance probability per threshold", {
   sse <- fake_sse_object()
+  test_stat <- c(3, 4)  # -delta_ofv for the two-sample fixture
 
   low <- .ppePowerPlotData(sse, thresholds = 1, studySizes = 12L)
   high <- .ppePowerPlotData(sse, thresholds = 3.5, studySizes = 12L)
 
-  # a separate ncp per threshold is exactly the behaviour being replaced
-  expect_false(identical(low$power, high$power))
+  # At the base study size the scaling factor is 1, so each threshold's ncp is
+  # solved to reproduce that threshold's own clipped exceedance rate exactly.
+  # A single ncp fitted to the whole distribution cannot reproduce two
+  # different rates at once, so these equalities are precisely what breaks when
+  # the estimator changes in Task 5. Asserting only that the two powers differ
+  # would be useless: power depends on the threshold under any implementation.
+  expect_equal(low$power, 100 * .clipProbability(mean(test_stat > 1), 2))
+  expect_equal(high$power, 100 * .clipProbability(mean(test_stat > 3.5), 2))
   expect_equal(unique(low$degrees_freedom), 1L)
 })
 

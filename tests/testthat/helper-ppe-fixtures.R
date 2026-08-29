@@ -3,7 +3,13 @@ ppe_dofv <- function(n = 200L, df = 1, ncp = 8, seed = 101L) {
   has <- exists(".Random.seed", envir = globalenv(), inherits = FALSE)
   old <- if (has) get(".Random.seed", envir = globalenv(), inherits = FALSE)
   on.exit({
-    if (has) assign(".Random.seed", old, envir = globalenv())
+    if (has) {
+      assign(".Random.seed", old, envir = globalenv())
+    } else if (exists(".Random.seed", envir = globalenv(), inherits = FALSE)) {
+      # set.seed() creates .Random.seed where there was none; restoring the
+      # caller's state means restoring its absence too.
+      rm(".Random.seed", envir = globalenv())
+    }
   }, add = TRUE)
   set.seed(seed)
   stats::rchisq(n, df = df, ncp = ncp)
