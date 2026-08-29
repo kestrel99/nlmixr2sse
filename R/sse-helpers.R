@@ -822,17 +822,50 @@
       "{.arg fit$cov} must use unique, non-empty theta names."
     )
   }
-  missing_theta <- setdiff(cov_names, names(theta))
-  if (length(missing_theta) > 0L) {
+  # fit$cov now carries OMEGA entries (om.<eta> / cov.<eta>.<eta>) alongside the
+  # thetas. Partition them: thetas are drawn multivariate-Normal from their own
+  # sub-block, OMEGA is drawn separately from an inverse-Wishart, and the
+  # THETA<->OMEGA cross-terms are deliberately discarded (this mode shares NWPRI's independence factorization, though it is not
+  # NWPRI -- the OMEGA density differs).
+  omega_entries <- .omegaEntryTable(.uiOmegaInfo(fit[["ui"]]))
+  omega_names <- omega_entries$covName
+
+  theta_names <- intersect(cov_names, names(theta))
+  unknown <- setdiff(cov_names, c(theta_names, omega_names))
+  if (length(unknown) > 0L) {
     .abortSSE(
-      "{.arg fit$cov} contains theta name{?s} {.val {missing_theta}} that are not present in {.arg fit$theta}."
+      "{.arg fit$cov} contains name{?s} {.val {unknown}} that match neither {.arg fit$theta} nor an OMEGA entry."
     )
+  }
+
+  # per-eta standard errors, from the diagonal OMEGA entries present in fit$cov
+  omega_mat <- .fitField(fit, "omega")
+  eta_names <- if (is.matrix(omega_mat)) rownames(omega_mat) else character(0)
+  omega_se <- stats::setNames(
+    rep(NA_real_, length(eta_names)),
+    eta_names
+  )
+  diag_entries <- omega_entries[omega_entries$diagonal, , drop = FALSE]
+  for (i in seq_len(nrow(diag_entries))) {
+    nm <- diag_entries$covName[[i]]
+    eta <- diag_entries$rowName[[i]]
+    if (isTRUE(diag_entries$fix[[i]])) {
+      next
+    }
+    if (nm %in% cov_names && eta %in% eta_names) {
+      omega_se[[eta]] <- sqrt(cov_mat[nm, nm])
+    }
   }
 
   list(
     theta = theta,
-    cov = cov_mat,
-    drawNames = cov_names
+    cov = cov_mat[theta_names, theta_names, drop = FALSE],
+    # the whole matrix, kept so the "joint" mode can pull a theta+omega
+    # sub-block including the cross-terms that "independent_iw" discards
+    fullCov = cov_mat,
+    drawNames = theta_names,
+    omegaSe = omega_se,
+    omegaEntries = omega_entries
   )
 }
 

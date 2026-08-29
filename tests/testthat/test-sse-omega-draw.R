@@ -281,3 +281,77 @@ test_that("drawOmega keeps a drawable block whose SE is unusable", {
   out <- .drawOmega(omega0, blocks = list(1L), se = NA_real_)
   expect_equal(out[1L, 1L], 0.30)
 })
+
+test_that("alignedCovariance partitions theta and omega entries", {
+  nm <- c("tka", "tcl", "om.eta.ka", "cov.eta.cl.eta.ka", "om.eta.cl")
+  cov <- diag(c(0.04, 0.09, 0.01, 0.002, 0.005))
+  dimnames(cov) <- list(nm, nm)
+
+  omega <- matrix(c(0.3, 0.02, 0.02, 0.2), 2L, 2L)
+  dimnames(omega) <- list(c("eta.ka", "eta.cl"), c("eta.ka", "eta.cl"))
+
+  fit <- list(
+    theta = c(tka = 0.45, tcl = 1.0),
+    omega = omega,
+    cov = cov,
+    ui = list(iniDf = data.frame(
+      name = c("tka", "tcl", "eta.ka", "(eta.ka,eta.cl)", "eta.cl"),
+      ntheta = c(1L, 2L, NA, NA, NA),
+      neta1 = c(NA, NA, 1L, 2L, 2L),
+      neta2 = c(NA, NA, 1L, 1L, 2L),
+      fix = rep(FALSE, 5L),
+      stringsAsFactors = FALSE
+    ))
+  )
+
+  aligned <- .alignedCovariance(fit)
+
+  expect_equal(aligned$drawNames, c("tka", "tcl"))
+  expect_equal(dim(aligned$cov), c(2L, 2L))
+  expect_equal(aligned$omegaSe[["eta.ka"]], sqrt(0.01))
+  expect_equal(aligned$omegaSe[["eta.cl"]], sqrt(0.005))
+})
+
+test_that("alignedCovariance no longer aborts on omega names", {
+  nm <- c("tka", "om.eta.ka")
+  cov <- diag(c(0.04, 0.01))
+  dimnames(cov) <- list(nm, nm)
+  omega <- matrix(0.3, 1L, 1L, dimnames = list("eta.ka", "eta.ka"))
+
+  fit <- list(
+    theta = c(tka = 0.45),
+    omega = omega,
+    cov = cov,
+    ui = list(iniDf = data.frame(
+      name = c("tka", "eta.ka"),
+      ntheta = c(1L, NA),
+      neta1 = c(NA, 1L),
+      neta2 = c(NA, 1L),
+      fix = c(FALSE, FALSE),
+      stringsAsFactors = FALSE
+    ))
+  )
+
+  expect_silent(aligned <- .alignedCovariance(fit))
+  expect_equal(aligned$drawNames, "tka")
+})
+
+test_that("alignedCovariance still rejects a genuinely unknown name", {
+  nm <- c("tka", "mystery")
+  cov <- diag(c(0.04, 0.01))
+  dimnames(cov) <- list(nm, nm)
+
+  fit <- list(
+    theta = c(tka = 0.45),
+    omega = matrix(numeric(0), 0L, 0L),
+    cov = cov,
+    ui = list(iniDf = data.frame(
+      name = "tka", ntheta = 1L, neta1 = NA_integer_, neta2 = NA_integer_,
+      fix = FALSE, stringsAsFactors = FALSE
+    ))
+  )
+
+  err <- capture_sse_error(.alignedCovariance(fit))
+  expect_s3_class(err, "error")
+  expect_match(conditionMessage(err), "mystery")
+})
