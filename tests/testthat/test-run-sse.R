@@ -357,7 +357,7 @@ test_that("simulationRecord preserves row identifiers through rxSolve output", {
   dir.create(file.path(tmp, "simulations"))
   on.exit(unlink(tmp, recursive = TRUE, force = TRUE), add = TRUE)
 
-  schema <- nlmixr2utils::rawResultsSchema(unclass(ref_fit))
+  schema <- .rawResultsSchemaForFit(ref_fit)
   ref_data <- .getFitData(ref_fit)
   param_set <- list(
     theta = ref_fit$theta,
@@ -741,12 +741,18 @@ test_that("runSSE supports raw-results and covariance parameter sources end to e
   on.exit(unlink(rawres_out, recursive = TRUE, force = TRUE), add = TRUE)
   on.exit(unlink(cov_out, recursive = TRUE, force = TRUE), add = TRUE)
 
+  # Pass the fit classed, never unclass()ed: nlmixr2 fits are data frames with a
+  # custom `$` that exposes model metadata, so unclass() makes `$theta`/`$omega`
+  # fall back to column lookup and silently return NULL. rawResultsRow() then
+  # builds rows with no parameter columns at all, and the failure only surfaces
+  # much later as an unrelated error from parseRawResultsParams(). See
+  # .rawResultsSchemaForFit() in R/sse-helpers.R.
   rawres_rows <- try(
     do.call(
       rbind,
       list(
         nlmixr2utils::rawResultsRow(
-          unclass(ref_fit),
+          ref_fit,
           source = "bootstrap",
           hypothesis = "reference",
           sample = 0L,
@@ -754,7 +760,7 @@ test_that("runSSE supports raw-results and covariance parameter sources end to e
           role = "reference"
         ),
         nlmixr2utils::rawResultsRow(
-          unclass(ref_fit),
+          ref_fit,
           source = "bootstrap",
           hypothesis = "sample",
           sample = 1L,
@@ -767,7 +773,7 @@ test_that("runSSE supports raw-results and covariance parameter sources end to e
           significantDigits = 4.7
         ),
         nlmixr2utils::rawResultsRow(
-          unclass(ref_fit),
+          ref_fit,
           source = "bootstrap",
           hypothesis = "sample",
           sample = 2L,
@@ -780,7 +786,7 @@ test_that("runSSE supports raw-results and covariance parameter sources end to e
           significantDigits = 4.1
         ),
         nlmixr2utils::rawResultsRow(
-          unclass(ref_fit),
+          ref_fit,
           source = "bootstrap",
           hypothesis = "sample",
           sample = 3L,
@@ -874,9 +880,14 @@ test_that("runSSE supports raw-results and covariance parameter sources end to e
   }
 
   expect_s3_class(cov_res, "nlmixr2SSE")
+  # parameterPartition reports canonical raw-results names throughout -- the
+  # same vocabulary as `fixed`, as `initialValues$parameter` below, and as the
+  # rawres columns -- not nlmixr2's internal `fit$cov` rownames, which spell the
+  # omega diagonal `om.eta.ka`.
+  cov_schema <- .rawResultsSchemaForFit(ref_fit)
   expect_equal(
     cov_res$runInfo$parameterSourceInfo$parameterPartition$drawn,
-    rownames(ref_fit$cov)
+    c(cov_schema$thetaCols, cov_schema$omegaCols)
   )
   cov_tka <- cov_res$initialValues$value[
     cov_res$initialValues$parameter == "tka"
