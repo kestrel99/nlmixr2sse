@@ -10,10 +10,16 @@ test_that("runSSEControl returns a validated control object", {
 })
 
 test_that("runSSEControl enforces rawres-only options", {
+  # The deprecated randomEstimationInits keeps its original hard restriction
+  # to "rawres" (emitting a deprecation warning first); referenceInitials /
+  # alternativeInitials, set directly, deliberately relax this to a no-op --
+  # see the "simulation-start initials" tests below.
   err_random <- capture_sse_error(
-    runSSEControl(
-      parameterSource = "fixed",
-      randomEstimationInits = TRUE
+    suppressWarnings(
+      runSSEControl(
+        parameterSource = "fixed",
+        randomEstimationInits = TRUE
+      )
     )
   )
   expect_s3_class(err_random, "error")
@@ -55,6 +61,57 @@ test_that("runSSEControl enforces staged-availability and combination rules", {
   err_eta <- capture_sse_error(runSSEControl(initialEtas = TRUE))
   expect_s3_class(err_eta, "error")
   expect_match(conditionMessage(err_eta), "reserved")
+})
+
+test_that("initials are settable per model role", {
+  ctl <- runSSEControl(referenceInitials = "simulation", alternativeInitials = "model")
+
+  expect_equal(ctl$referenceInitials, "simulation")
+  expect_equal(ctl$alternativeInitials, "model")
+})
+
+test_that("initials reject unknown policies", {
+  expect_error(runSSEControl(referenceInitials = "truth"), "must be one of")
+})
+
+test_that("randomEstimationInits maps to both roles with a deprecation warning", {
+  # The mapped policy is "simulation" for both roles, which -- like the
+  # deprecated flag it replaces -- requires parameterSource = "rawres"; the
+  # plan's sketch of this test omitted that and would abort on the default
+  # "fixed" source instead of just warning, so it is supplied here to isolate
+  # the deprecation-mapping behavior from that separate restriction.
+  expect_warning(
+    ctl <- runSSEControl(
+      parameterSource = "rawres",
+      randomEstimationInits = TRUE
+    ),
+    "deprecated"
+  )
+  expect_equal(ctl$referenceInitials, "simulation")
+  expect_equal(ctl$alternativeInitials, "simulation")
+})
+
+test_that("the old and new arguments cannot contradict each other", {
+  expect_error(
+    suppressWarnings(runSSEControl(randomEstimationInits = TRUE,
+                                   referenceInitials = "model")),
+    "contradict"
+  )
+})
+
+test_that("simulation-start initials are a silent no-op outside rawres mode", {
+  # Unlike the deprecated randomEstimationInits, referenceInitials /
+  # alternativeInitials = "simulation" does not require parameterSource =
+  # "rawres": every other mode still resolves a real generating vector (just
+  # the same one for every replicate), so the setting is merely inert there,
+  # not nonsensical -- and .fitTaskRecord() only applies it under "rawres".
+  ctl <- runSSEControl(
+    parameterSource = "fixed",
+    referenceInitials = "simulation",
+    alternativeInitials = "simulation"
+  )
+  expect_equal(ctl$referenceInitials, "simulation")
+  expect_equal(ctl$alternativeInitials, "simulation")
 })
 
 test_that("runSSEControl validates raw-results filters", {

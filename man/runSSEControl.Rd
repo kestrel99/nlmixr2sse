@@ -14,7 +14,9 @@ runSSEControl(
   offsetRawres = 1L,
   inFilter = NULL,
   outFilter = NULL,
-  randomEstimationInits = FALSE,
+  referenceInitials = c("model", "simulation"),
+  alternativeInitials = c("model", "simulation"),
+  randomEstimationInits = lifecycle::deprecated(),
   updateFix = FALSE,
   appendColumns = NULL,
   simulationPostProcess = NULL,
@@ -63,9 +65,24 @@ eta. Defaults to \code{0.5}.}
 \item{inFilter, outFilter}{Optional raw-results filters. These accept the same
 forms as \code{\link[nlmixr2utils:setupRawResultsFilter]{nlmixr2utils::setupRawResultsFilter()}}.}
 
-\item{randomEstimationInits}{Logical. When \code{TRUE}, raw-results-driven SSE
-also uses each selected raw-results row as the starting point for the
-estimation step.}
+\item{referenceInitials, alternativeInitials}{Estimation starting-value
+policy for, respectively, the simulation (reference) model refit and the
+alternative-model refits. \code{"model"} (the default for both) starts each
+fit from the model's own initial estimates, as before. \code{"simulation"}
+starts a fit from that replicate's generating parameter vector instead --
+a numerical intervention only: it changes optimiser starting values, not
+the simulated data. It only has an effect when
+\code{parameterSource = "rawres"} -- the same restriction the deprecated
+\code{randomEstimationInits} enforced as a hard error. Under \code{"fixed"} or
+\code{"covariance"} it is instead a silent no-op, matching this package's
+existing "simulation" starts implementation, which is wired up only for
+\code{"rawres"}. Splitting the setting by role lets a reference-only or
+alternative-only sensitivity study be run without touching the other
+role's starts.}
+
+\item{randomEstimationInits}{Deprecated. Use \code{referenceInitials} and
+\code{alternativeInitials} instead. \code{TRUE} maps to
+\code{referenceInitials = "simulation"} and \code{alternativeInitials = "simulation"}; \code{FALSE} maps both to \code{"model"}.}
 
 \item{updateFix}{Logical. When \code{TRUE}, raw-results-driven SSE updates fixed
 model values from the selected raw-results row before refitting.}

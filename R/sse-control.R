@@ -33,9 +33,24 @@
 #' @param offsetRawres Integer sample offset for raw-results input.
 #' @param inFilter,outFilter Optional raw-results filters. These accept the same
 #'   forms as [nlmixr2utils::setupRawResultsFilter()].
-#' @param randomEstimationInits Logical. When `TRUE`, raw-results-driven SSE
-#'   also uses each selected raw-results row as the starting point for the
-#'   estimation step.
+#' @param referenceInitials,alternativeInitials Estimation starting-value
+#'   policy for, respectively, the simulation (reference) model refit and the
+#'   alternative-model refits. `"model"` (the default for both) starts each
+#'   fit from the model's own initial estimates, as before. `"simulation"`
+#'   starts a fit from that replicate's generating parameter vector instead --
+#'   a numerical intervention only: it changes optimiser starting values, not
+#'   the simulated data. It only has an effect when
+#'   `parameterSource = "rawres"` -- the same restriction the deprecated
+#'   `randomEstimationInits` enforced as a hard error. Under `"fixed"` or
+#'   `"covariance"` it is instead a silent no-op, matching this package's
+#'   existing "simulation" starts implementation, which is wired up only for
+#'   `"rawres"`. Splitting the setting by role lets a reference-only or
+#'   alternative-only sensitivity study be run without touching the other
+#'   role's starts.
+#' @param randomEstimationInits Deprecated. Use `referenceInitials` and
+#'   `alternativeInitials` instead. `TRUE` maps to
+#'   `referenceInitials = "simulation"` and `alternativeInitials =
+#'   "simulation"`; `FALSE` maps both to `"model"`.
 #' @param updateFix Logical. When `TRUE`, raw-results-driven SSE updates fixed
 #'   model values from the selected raw-results row before refitting.
 #' @param appendColumns Optional character vector of simulated-data columns to
@@ -71,7 +86,9 @@ runSSEControl <- function(
   offsetRawres = 1L,
   inFilter = NULL,
   outFilter = NULL,
-  randomEstimationInits = FALSE,
+  referenceInitials = c("model", "simulation"),
+  alternativeInitials = c("model", "simulation"),
+  randomEstimationInits = lifecycle::deprecated(),
   updateFix = FALSE,
   appendColumns = NULL,
   simulationPostProcess = NULL,
@@ -83,10 +100,38 @@ runSSEControl <- function(
   saveDatasets = TRUE,
   overwrite = FALSE
 ) {
+  # Captured before match.arg() reassigns the arguments below -- missing()
+  # inspects how the argument was bound at call time, and reassigning the
+  # variable replaces that binding, so a missing() call after match.arg()
+  # would always report FALSE regardless of what the caller supplied.
+  referenceInitialsMissing <- missing(referenceInitials)
+  alternativeInitialsMissing <- missing(alternativeInitials)
+
   parameterSource <- match.arg(parameterSource)
   covarianceDrawMissing <- missing(covarianceDraw)
   covarianceDraw <- match.arg(covarianceDraw)
   omegaRseWarnMissing <- missing(omegaRseWarn)
+  # match.arg()'s own error reads "should be one of", which does not match
+  # this package's "{.arg x} must be one of ..." phrasing used elsewhere for
+  # invalid enums, so its error is caught and rephrased. Explicit `choices`
+  # keeps match.arg's partial-matching behavior working even though the call
+  # is no longer a direct, unwrapped reference to the formal argument.
+  referenceInitials <- tryCatch(
+    match.arg(referenceInitials, c("model", "simulation")),
+    error = function(e) {
+      .abortSSE(
+        "{.arg referenceInitials} must be one of {.val {c('model', 'simulation')}}."
+      )
+    }
+  )
+  alternativeInitials <- tryCatch(
+    match.arg(alternativeInitials, c("model", "simulation")),
+    error = function(e) {
+      .abortSSE(
+        "{.arg alternativeInitials} must be one of {.val {c('model', 'simulation')}}."
+      )
+    }
+  )
 
   checkmate::assertFlag(estimateSimulation)
   if (!is.null(refOfv)) {
@@ -98,7 +143,6 @@ runSSEControl <- function(
     any.missing = FALSE,
     lower = 0
   )
-  checkmate::assertFlag(randomEstimationInits)
   checkmate::assertFlag(updateFix)
   checkmate::assertNumber(
     omegaRseWarn,
@@ -136,11 +180,49 @@ runSSEControl <- function(
       "{.arg refOfv} cannot be supplied when {.arg estimateSimulation} is TRUE."
     )
   }
-  if (isTRUE(randomEstimationInits) && parameterSource != "rawres") {
-    .abortSSE(
-      "{.arg randomEstimationInits} requires {.arg parameterSource = \"rawres\"}."
+
+  # randomEstimationInits applied its single TRUE/FALSE value to every model
+  # role at once, and only ever meant anything under parameterSource =
+  # "rawres" (every other mode gives every replicate the same generating
+  # vector, so "start at the generating value" is just "start at the fitted
+  # value" for every fit) -- so it hard-errored outside that mode. Preserve
+  # that exact behavior for the deprecated argument. referenceInitials /
+  # alternativeInitials generalize the same "simulation" policy to modes
+  # where it is merely inert rather than nonsensical (a fixed or covariance
+  # run still resolves a real, if uniform-per-replicate, generating vector),
+  # so setting them outside rawres mode is left as a silent no-op --
+  # .fitTaskRecord() only ever applies "simulation" starts when
+  # parameterSource is "rawres" -- rather than an error.
+  if (lifecycle::is_present(randomEstimationInits)) {
+    lifecycle::deprecate_soft(
+      "0.1",
+      "runSSEControl(randomEstimationInits)",
+      details = "Use `referenceInitials` and `alternativeInitials` instead."
     )
+    checkmate::assertFlag(randomEstimationInits)
+    mapped <- if (isTRUE(randomEstimationInits)) "simulation" else "model"
+    # Contradiction is checked ahead of the rawres restriction below: a call
+    # that both contradicts itself and violates that restriction should
+    # report the contradiction, since it is the more fundamental problem.
+    if (!referenceInitialsMissing && !identical(referenceInitials, mapped)) {
+      .abortSSE(
+        "{.arg randomEstimationInits} and {.arg referenceInitials} contradict each other."
+      )
+    }
+    if (!alternativeInitialsMissing && !identical(alternativeInitials, mapped)) {
+      .abortSSE(
+        "{.arg randomEstimationInits} and {.arg alternativeInitials} contradict each other."
+      )
+    }
+    if (isTRUE(randomEstimationInits) && parameterSource != "rawres") {
+      .abortSSE(
+        "{.arg randomEstimationInits} requires {.arg parameterSource = \"rawres\"}."
+      )
+    }
+    referenceInitials <- mapped
+    alternativeInitials <- mapped
   }
+
   if (isTRUE(updateFix) && parameterSource != "rawres") {
     .abortSSE(
       "{.arg updateFix} requires {.arg parameterSource = \"rawres\"}."
@@ -183,7 +265,8 @@ runSSEControl <- function(
       offsetRawres = as.integer(offsetRawres),
       inFilter = inFilter,
       outFilter = outFilter,
-      randomEstimationInits = randomEstimationInits,
+      referenceInitials = referenceInitials,
+      alternativeInitials = alternativeInitials,
       updateFix = updateFix,
       appendColumns = appendColumns,
       simulationPostProcess = simulationPostProcess,

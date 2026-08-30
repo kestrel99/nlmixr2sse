@@ -150,6 +150,29 @@
   as.integer(recorded)
 }
 
+# Recovers a run's per-role starting-value policy from a saved control object.
+# Runs written before referenceInitials/alternativeInitials existed only
+# recorded the single randomEstimationInits flag, which applied to every
+# role -- so, unlike rxThreads, the legacy value is not actually unknown and
+# can be resolved exactly rather than merely warned about.
+.legacyInitialsPolicy <- function(recordedControl) {
+  if (
+    !is.null(recordedControl$referenceInitials) ||
+      !is.null(recordedControl$alternativeInitials)
+  ) {
+    return(list(
+      referenceInitials = recordedControl$referenceInitials %||% "model",
+      alternativeInitials = recordedControl$alternativeInitials %||% "model"
+    ))
+  }
+  mapped <- if (isTRUE(recordedControl$randomEstimationInits)) {
+    "simulation"
+  } else {
+    "model"
+  }
+  list(referenceInitials = mapped, alternativeInitials = mapped)
+}
+
 .emptyReferenceValues <- function() {
   data.frame(
     parameter = character(0),
@@ -794,7 +817,13 @@
       offsetRawres = control$offsetRawres,
       inFilter = control$inFilter,
       sourceSamples = vapply(records, `[[`, integer(1), "sourceSample"),
-      estimationInitialValues = if (isTRUE(control$randomEstimationInits)) {
+      # Historically a single run-wide flag; now role-specific. Report
+      # "rawres" only when every role starts from the generating vector, to
+      # keep this summary field meaningful as a single value.
+      estimationInitialValues = if (
+        identical(control$referenceInitials, "simulation") &&
+          identical(control$alternativeInitials, "simulation")
+      ) {
         "rawres"
       } else {
         "reference_fit"
@@ -1591,11 +1620,21 @@
     spec$label,
     sample
   )
+  # The starting-value policy is role-specific: the simulation (reference)
+  # model refit and the alternative-model refits can each independently start
+  # from the model's own initial estimates ("model") or from the replicate's
+  # generating parameter vector ("simulation").
+  initials_policy <- if (identical(spec$role, "simulation")) {
+    control$referenceInitials
+  } else {
+    control$alternativeInitials
+  }
+  use_simulation_starts <- identical(initials_policy, "simulation")
   fit_ui <- .uiWithParameterUpdates(
     spec$ui,
     simRecord$paramSet,
     updateEstimated = identical(control$parameterSource, "rawres") &&
-      isTRUE(control$randomEstimationInits),
+      use_simulation_starts,
     updateFixed = identical(control$parameterSource, "rawres") &&
       isTRUE(control$updateFix)
   )

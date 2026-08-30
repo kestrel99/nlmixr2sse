@@ -813,7 +813,7 @@ test_that("runSSE supports raw-results and covariance parameter sources end to e
   nlmixr2utils::writeRawResults(rawres_rows, rawres_dir)
 
   rawres_res <- try(
-    suppressMessages(
+    suppressWarnings(suppressMessages(
       runSSE(
         ref_fit,
         alternativeModels = sseModel(alt_fit, label = "no_eta"),
@@ -823,13 +823,16 @@ test_that("runSSE supports raw-results and covariance parameter sources end to e
           parameterSource = "rawres",
           rawresInput = rawres_dir,
           inFilter = ~ minimization_successful == 1 & significant_digits > 4,
+          # Deprecated, but must keep working -- kept here deliberately to
+          # exercise the old argument end to end; suppressWarnings() absorbs
+          # the resulting deprecation warning so the suite stays at WARN 0.
           randomEstimationInits = TRUE,
           workers = 1L
         ),
         outputDir = rawres_out,
         restart = TRUE
       )
-    ),
+    )),
     silent = TRUE
   )
   if (inherits(rawres_res, "try-error")) {
@@ -913,6 +916,157 @@ test_that("runSSE supports raw-results and covariance parameter sources end to e
   expect_gte(length(unique(signif(cov_omega, 8))), 2L)
 })
 
+test_that("starting-value policy changes no generating value or dataset", {
+  # The critical invariant for Task 4: referenceInitials/alternativeInitials
+  # are a purely numerical intervention (which UI the optimiser starts a fit
+  # from) and must never change the generating values or the simulated data
+  # -- otherwise the setting would confound numerics with data and be
+  # worthless as a sensitivity analysis. Exercised under parameterSource =
+  # "rawres", the one mode where the two policies actually differ (every
+  # other mode has referenceInitials/alternativeInitials as a documented
+  # no-op).
+  ref_fit <- .fit_sse_model(.sse_ref_model)
+
+  rawres_dir <- tempfile("nlmixr2sse-initials-rawres-")
+  dir_a <- tempfile("nlmixr2sse-initials-model-")
+  dir_b <- tempfile("nlmixr2sse-initials-sim-")
+  dir.create(rawres_dir)
+  on.exit(unlink(rawres_dir, recursive = TRUE, force = TRUE), add = TRUE)
+  on.exit(unlink(dir_a, recursive = TRUE, force = TRUE), add = TRUE)
+  on.exit(unlink(dir_b, recursive = TRUE, force = TRUE), add = TRUE)
+
+  rawres_rows <- try(
+    do.call(
+      rbind,
+      list(
+        nlmixr2utils::rawResultsRow(
+          ref_fit,
+          source = "bootstrap",
+          hypothesis = "sample",
+          sample = 1L,
+          modelLabel = "reference",
+          role = "reference",
+          theta = c(tka = 0.47, tcl = 0.98, tv = 3.40, add.sd = 0.68),
+          omega = c("omega(eta.ka,eta.ka)" = 0.55),
+          minimizationSuccessful = 1L,
+          covarianceStepSuccessful = 1L,
+          significantDigits = 4.7
+        ),
+        nlmixr2utils::rawResultsRow(
+          ref_fit,
+          source = "bootstrap",
+          hypothesis = "sample",
+          sample = 2L,
+          modelLabel = "reference",
+          role = "reference",
+          theta = c(tka = 0.43, tcl = 1.03, tv = 3.50, add.sd = 0.72),
+          omega = c("omega(eta.ka,eta.ka)" = 0.63),
+          minimizationSuccessful = 1L,
+          covarianceStepSuccessful = 1L,
+          significantDigits = 4.1
+        )
+      )
+    ),
+    silent = TRUE
+  )
+  if (inherits(rawres_rows, "try-error")) {
+    skip(paste(
+      "Invariance-test rawres fixture setup is unavailable in this environment:",
+      as.character(rawres_rows)
+    ))
+  }
+  nlmixr2utils::writeRawResults(rawres_rows, rawres_dir)
+
+  # .fitTaskRecord() is the only place referenceInitials takes effect (it
+  # decides the optimiser's starting UI); everything that produces the
+  # simulated data and the recorded generating values runs ahead of it in
+  # the pipeline. Stubbing it out keeps this test fast -- no real
+  # optimisation runs twice over, for each of two full runs -- without
+  # weakening what is being checked: simulation and parameter-generation
+  # code still runs for real, unmodified, for both control objects below.
+  testthat::local_mocked_bindings(
+    .fitTaskRecord = function(sample, spec, simRecord, unionSchema, ...) {
+      list(
+        success = TRUE,
+        row = nlmixr2utils::rawResultsRow(
+          fit = NULL,
+          source = "sse",
+          hypothesis = spec$hypothesis,
+          sample = sample,
+          modelLabel = spec$label,
+          role = spec$role,
+          objf = 100 + sample,
+          schema = unionSchema
+        ),
+        sample = as.integer(sample),
+        model_label = spec$label,
+        role = spec$role,
+        hypothesis = spec$hypothesis
+      )
+    },
+    .package = "nlmixr2sse"
+  )
+
+  base <- try(
+    suppressMessages(
+      runSSE(
+        ref_fit,
+        samples = 2L,
+        seed = 7,
+        control = runSSEControl(
+          workers = 1L,
+          parameterSource = "rawres",
+          rawresInput = rawres_dir,
+          referenceInitials = "model"
+        ),
+        outputDir = dir_a,
+        restart = TRUE
+      )
+    ),
+    silent = TRUE
+  )
+  if (inherits(base, "try-error")) {
+    skip(paste(
+      "Invariance-test SSE run is unavailable in this environment:",
+      as.character(base)
+    ))
+  }
+
+  alt <- suppressMessages(
+    runSSE(
+      ref_fit,
+      samples = 2L,
+      seed = 7,
+      control = runSSEControl(
+        workers = 1L,
+        parameterSource = "rawres",
+        rawresInput = rawres_dir,
+        referenceInitials = "simulation"
+      ),
+      outputDir = dir_b,
+      restart = TRUE
+    )
+  )
+
+  # Comparing only initialValues would miss a regression where the simulated
+  # data changed but the recorded generating values happened not to -- so
+  # both are checked.
+  expect_equal(base$initialValues, alt$initialValues)
+
+  # Each replicate writes both a .csv and a .rds artifact; only the .rds is
+  # compared here since it round-trips exactly (write.csv() is lossy for
+  # types like factors/dates and is not the canonical artifact).
+  sim_files_a <- sort(list.files(file.path(dir_a, "simulations"), pattern = "\\.rds$"))
+  sim_files_b <- sort(list.files(file.path(dir_b, "simulations"), pattern = "\\.rds$"))
+  expect_true(length(sim_files_a) > 0L)
+  expect_equal(sim_files_a, sim_files_b)
+  for (f in sim_files_a) {
+    data_a <- readRDS(file.path(dir_a, "simulations", f))
+    data_b <- readRDS(file.path(dir_b, "simulations", f))
+    expect_equal(data_a, data_b, info = f)
+  }
+})
+
 test_that("validateResumeRequest aborts on an rxThreads mismatch", {
   run_info <- list(
     fitName = "fake_sse_fit",
@@ -978,6 +1132,109 @@ test_that("validateResumeRequest accepts a matching rxThreads", {
       requestedLabels = character(0),
       rxThreads = 4L
     )
+  )
+})
+
+test_that("validateResumeRequest aborts on a referenceInitials mismatch", {
+  run_info <- list(
+    fitName = "fake_sse_fit",
+    samples = 2L,
+    parameterSource = "rawres",
+    estimateSimulation = TRUE,
+    referenceInitials = "simulation",
+    alternativeInitials = "model"
+  )
+
+  err <- capture_sse_error(
+    .validateResumeRequest(
+      existingRunInfo = run_info,
+      fitName = "fake_sse_fit",
+      samples = 2L,
+      control = runSSEControl(
+        parameterSource = "rawres",
+        referenceInitials = "model"
+      ),
+      requestedLabels = character(0)
+    )
+  )
+
+  expect_s3_class(err, "error")
+  expect_match(conditionMessage(err), "referenceInitials")
+})
+
+test_that("validateResumeRequest aborts on an alternativeInitials mismatch", {
+  run_info <- list(
+    fitName = "fake_sse_fit",
+    samples = 2L,
+    parameterSource = "rawres",
+    estimateSimulation = TRUE,
+    referenceInitials = "model",
+    alternativeInitials = "model"
+  )
+
+  err <- capture_sse_error(
+    .validateResumeRequest(
+      existingRunInfo = run_info,
+      fitName = "fake_sse_fit",
+      samples = 2L,
+      control = runSSEControl(
+        parameterSource = "rawres",
+        alternativeInitials = "simulation"
+      ),
+      requestedLabels = character(0)
+    )
+  )
+
+  expect_s3_class(err, "error")
+  expect_match(conditionMessage(err), "alternativeInitials")
+})
+
+test_that("validateResumeRequest accepts matching initials and resolves legacy runs", {
+  # A run written before referenceInitials/alternativeInitials existed only
+  # recorded the deprecated randomEstimationInits flag in its saved control
+  # object -- resolved here via .legacyInitialsPolicy(), exactly as
+  # addModels resolves it.
+  run_info <- list(
+    fitName = "fake_sse_fit",
+    samples = 2L,
+    parameterSource = "rawres",
+    estimateSimulation = TRUE,
+    control = list(randomEstimationInits = TRUE)
+  )
+
+  expect_silent(
+    .validateResumeRequest(
+      existingRunInfo = run_info,
+      fitName = "fake_sse_fit",
+      samples = 2L,
+      control = runSSEControl(
+        parameterSource = "rawres",
+        referenceInitials = "simulation",
+        alternativeInitials = "simulation"
+      ),
+      requestedLabels = character(0)
+    )
+  )
+})
+
+test_that("legacyInitialsPolicy resolves recorded and legacy control objects", {
+  # Exercises the real helper, not a copy of its expression.
+  expect_equal(
+    nlmixr2sse:::.legacyInitialsPolicy(
+      list(referenceInitials = "simulation", alternativeInitials = "model")
+    ),
+    list(referenceInitials = "simulation", alternativeInitials = "model")
+  )
+  # Legacy: only the deprecated flag was ever recorded.
+  expect_equal(
+    nlmixr2sse:::.legacyInitialsPolicy(list(randomEstimationInits = TRUE)),
+    list(referenceInitials = "simulation", alternativeInitials = "simulation")
+  )
+  # No provenance at all (pre-dates randomEstimationInits too): defaults to
+  # "model" for both roles, matching the original default.
+  expect_equal(
+    nlmixr2sse:::.legacyInitialsPolicy(list()),
+    list(referenceInitials = "model", alternativeInitials = "model")
   )
 })
 

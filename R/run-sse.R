@@ -193,14 +193,17 @@ runSSE <- function(
       )
     }
     old_control <- existing_run_info$control %||% list()
-    if (
-      !identical(
-        isTRUE(old_control$randomEstimationInits),
-        isTRUE(control$randomEstimationInits)
+    old_initials <- .legacyInitialsPolicy(old_control)
+    if (!identical(old_initials$referenceInitials, control$referenceInitials)) {
+      .abortSSE(
+        "Add-models requests must reuse the original {.arg referenceInitials} setting."
       )
+    }
+    if (
+      !identical(old_initials$alternativeInitials, control$alternativeInitials)
     ) {
       .abortSSE(
-        "Add-models requests must reuse the original {.arg randomEstimationInits} setting."
+        "Add-models requests must reuse the original {.arg alternativeInitials} setting."
       )
     }
     if (!identical(isTRUE(old_control$updateFix), isTRUE(control$updateFix))) {
@@ -406,6 +409,19 @@ runSSE <- function(
     existing_run_info %||% list(),
     control
   )
+  # addModels reuse is validated exactly (above) rather than merely warned
+  # about, so the recorded policy always matches control's when addModels is
+  # set -- unlike rxThreads/covarianceDraw, no separate resolver is needed.
+  run_info$referenceInitials <- if (isTRUE(control$addModels)) {
+    existing_run_info$referenceInitials %||% control$referenceInitials
+  } else {
+    control$referenceInitials
+  }
+  run_info$alternativeInitials <- if (isTRUE(control$addModels)) {
+    existing_run_info$alternativeInitials %||% control$alternativeInitials
+  } else {
+    control$alternativeInitials
+  }
   run_info$runDirMode <- run_dir$mode
   run_info$alternativeLabels <- vapply(
     Filter(function(spec) identical(spec$role, "alternative"), all_fit_specs),

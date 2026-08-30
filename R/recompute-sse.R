@@ -144,6 +144,29 @@
     )
   }
 
+  # Starting-value policy is a numerical intervention, not a data-generating
+  # one, but it still changes which fits converge and survive into the
+  # summaries -- so a resumed run must keep it fixed, the same way
+  # parameterSource is fixed above. Runs that predate referenceInitials /
+  # alternativeInitials recorded only randomEstimationInits (applied to every
+  # role), so the legacy value is resolved exactly rather than treated as
+  # unknown.
+  legacy_initials <- .legacyInitialsPolicy(existingRunInfo$control %||% list())
+  recorded_reference_initials <-
+    existingRunInfo$referenceInitials %||% legacy_initials$referenceInitials
+  if (!identical(recorded_reference_initials, control$referenceInitials)) {
+    .abortSSE(
+      "Existing run directory used {.arg referenceInitials = {recorded_reference_initials}}, not {.arg referenceInitials = {control$referenceInitials}}."
+    )
+  }
+  recorded_alternative_initials <-
+    existingRunInfo$alternativeInitials %||% legacy_initials$alternativeInitials
+  if (!identical(recorded_alternative_initials, control$alternativeInitials)) {
+    .abortSSE(
+      "Existing run directory used {.arg alternativeInitials = {recorded_alternative_initials}}, not {.arg alternativeInitials = {control$alternativeInitials}}."
+    )
+  }
+
   if (!is.null(rxThreads)) {
     recorded <- existingRunInfo$rxThreads
     if (is.null(recorded)) {
