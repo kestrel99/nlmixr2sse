@@ -132,3 +132,89 @@ fake_ppe_type1_sse_object <- function(df = 1, n = 200L, seed = 101L, subjects = 
   fake_paired_sse_object(full_ofv = alt_floor + d, reduced_ofv = alt_floor,
                          subjects = subjects, seed = seed)
 }
+
+# A THREE-model fixture -- simulation, "alt1", "alt2" -- built so a single
+# call can genuinely diagnose one power comparison (simulation vs alt1) and
+# one Type-I comparison (alt2 vs simulation) together. Neither
+# fake_ppe_sse_object() nor fake_ppe_type1_sse_object() can do this alone:
+# each has only two models, and the OFV sign convention that makes one
+# comparison direction valid (positive test statistics) makes the reversed
+# direction on that SAME pair negative with probability 1 (see
+# fake_ppe_type1_sse_object()'s header). Here the simulation model's OFV is
+# fixed, alt1's floats ABOVE it by a noncentral chi-square draw (valid power
+# direction: simulation vs alt1), and alt2's floats BELOW it by a central
+# chi-square draw (valid Type-I direction: alt2 vs simulation) -- both hold
+# simultaneously because they involve different model pairs.
+fake_ppe_mixed_sse_object <- function(df = 1, powerNcp = 10, n = 80L, seed = 101L,
+                                      subjects = 12L) {
+  power_d <- ppe_dofv(n = n, df = df, ncp = powerNcp, seed = seed)
+  type1_d <- ppe_dofv(n = n, df = df, ncp = 0, seed = seed + 1L)
+  sim_ofv <- rep(1000, n)
+  alt1_ofv <- sim_ofv + power_d
+  alt2_ofv <- sim_ofv - type1_d
+
+  fit <- fake_sse_fit()
+  rows <- list()
+  for (i in seq_len(n)) {
+    rows[[length(rows) + 1L]] <- nlmixr2utils::rawResultsRow(
+      fit, source = "sse", hypothesis = "simulation", sample = i,
+      modelLabel = "fake_sse_fit", role = "simulation",
+      theta = c(tka = 0.55, tcl = 1.05),
+      omega = c("omega(eta.ka,eta.ka)" = 0.31),
+      objf = sim_ofv[[i]]
+    )
+    rows[[length(rows) + 1L]] <- nlmixr2utils::rawResultsRow(
+      fit, source = "sse", hypothesis = "alternative_1", sample = i,
+      modelLabel = "alt1", role = "alternative",
+      theta = c(tka = 0.52, tcl = 1.04),
+      objf = alt1_ofv[[i]]
+    )
+    rows[[length(rows) + 1L]] <- nlmixr2utils::rawResultsRow(
+      fit, source = "sse", hypothesis = "alternative_2", sample = i,
+      modelLabel = "alt2", role = "alternative",
+      theta = c(tka = 0.53, tcl = 1.06),
+      objf = alt2_ofv[[i]]
+    )
+  }
+  raw_results <- do.call(rbind, rows)
+
+  alt_specs <- list(
+    list(label = "alt1", role = "alternative", hypothesis = "alternative_1",
+         est = "focei", schema = list(thetaCols = c("tka", "tcl"),
+                                       omegaCols = character(0), sigmaCols = character(0))),
+    list(label = "alt2", role = "alternative", hypothesis = "alternative_2",
+         est = "focei", schema = list(thetaCols = c("tka", "tcl"),
+                                       omegaCols = character(0), sigmaCols = character(0)))
+  )
+  sim_spec <- fake_sse_fit_specs("fake_sse_fit", "alt1")[[1L]]
+
+  run_info <- list(
+    fitName = "fake_sse_fit", samples = n, seed = as.integer(seed),
+    parameterSource = "fixed", estimateSimulation = TRUE,
+    studySampleSize = subjects, studySampleUnit = "subjects",
+    studyIdColumn = "ID", studyObservationCount = 2L * subjects,
+    fitSpecs = c(list(sim_spec), alt_specs),
+    control = runSSEControl(workers = 1L)
+  )
+  outputs <- .computeSSEOutputs(
+    rawResults = raw_results,
+    initialWide = ppe_initial_estimates(n),
+    fitSpecsSnapshot = run_info$fitSpecs,
+    runInfo = run_info
+  )
+  .newNlmixr2SSE(
+    runInfo = run_info, rawResults = raw_results,
+    alternativeSpecs = list(
+      list(label = "alt1", est = "focei", control = list(print = 0L),
+           isFit = TRUE, hasDataOverride = FALSE),
+      list(label = "alt2", est = "focei", control = list(print = 0L),
+           isFit = TRUE, hasDataOverride = FALSE)
+    ),
+    outputDir = tempdir(), timestamp = Sys.time(),
+    referenceValues = outputs$referenceValues,
+    initialValues = outputs$initialValues,
+    parameterSummary = outputs$parameterSummary,
+    ofvSummary = outputs$ofvSummary,
+    powerSummary = outputs$powerSummary
+  )
+}

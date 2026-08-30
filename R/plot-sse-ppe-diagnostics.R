@@ -196,8 +196,18 @@
     envelopeSamples = bootstrapSamples, conf.level = conf.level, seed = seed
   )
 
+  # `df` here is the comparison's DECLARED/nominal value (the chi-square
+  # reference used for the critical value), kept comparable across power and
+  # type1 rows -- see ppeSummary()'s identical convention. It is NOT the
+  # diagnosed value for a Type-I comparison: there, df is what was
+  # ESTIMATED, and `df` above (comparison$df) can differ from it (e.g. a
+  # nominal df = 1 with a fitted df = 1.0074). `parameter`/`estimate` (also
+  # ppeSummary()'s own column names) are what the CvM statistic and p-value
+  # are actually computed against, and must be reported alongside `df` so
+  # the diagnosed value is never invisible in its own output.
   row <- data.frame(
-    comparison = comparison$label, cvm = cvm, p_value = p_value,
+    comparison = comparison$label, parameter = fit$parameter, estimate = fit$estimate,
+    cvm = cvm, p_value = p_value,
     n = fit$n, n_nonpositive = fit$nNonPositive,
     df = comparison$df %||% NA_real_, df_source = comparison$dfSource,
     stringsAsFactors = FALSE
@@ -297,8 +307,13 @@
 #' @return A `ggplot` object (a `patchwork` combination of an ECDF panel and
 #'   a QQ panel), with the numeric diagnostics attached as a
 #'   `"ppeDiagnostics"` attribute (one row per comparison, with `comparison`,
-#'   `cvm`, `p_value`, `n`, `n_nonpositive`, `df`, `df_source`) so results
-#'   are auditable without reading pixels.
+#'   `parameter` (`"ncp"` or `"df"`, whichever was diagnosed), `estimate`
+#'   (the fitted value of that parameter -- the value the discrepancy and
+#'   p-value are actually about), `cvm`, `p_value`, `n`, `n_nonpositive`,
+#'   `df` (the comparison's declared/nominal df, kept comparable across
+#'   power and type1 rows; for a Type-I comparison this can differ from
+#'   `estimate`), and `df_source`) so results are auditable without reading
+#'   pixels.
 #' @export
 plotSSEPpeDiagnostics <- function(
   x,

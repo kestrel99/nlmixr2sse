@@ -1,5 +1,23 @@
 skip_on_cran()
 
+# ---- RNG isolation --------------------------------------------------------
+
+test_that(".ppeEnvelopeBounds leaves the caller's RNG stream untouched", {
+  # Mirrors the existing .ppeParametricBootstrap() isolation test: the
+  # envelope draws its own bootstrap sample internally and must restore
+  # .Random.seed (including its absence) exactly as .withPpeSeed() does
+  # elsewhere in the PPE code, not just "usually leave it alone".
+  set.seed(99L)
+  before <- .Random.seed
+
+  .ppeEnvelopeBounds(
+    n = 50L, df = 1, ncp = 8, grid = seq(0, 20, length.out = 50L),
+    envelopeSamples = 20L, conf.level = 0.95, seed = 5L
+  )
+
+  expect_equal(.Random.seed, before)
+})
+
 # ---- Cramer-von Mises discrepancy -------------------------------------
 
 test_that("Cramer-von Mises separates a correct model from a misspecified one (power)", {
@@ -118,29 +136,38 @@ test_that("the caption states the envelope is pointwise, not simultaneous", {
   expect_match(p$labels$caption, "not simultaneous")
 })
 
-test_that("multiple comparisons produce one row per comparison, distinguishing power from type1", {
+test_that("a single call with two comparisons facets per-comparison, not collapsed", {
+  # A genuine multi-comparison call, not two single-comparison calls glued
+  # together afterward: fake_ppe_mixed_sse_object() is a three-model fixture
+  # (simulation, alt1, alt2) built so a power comparison (simulation vs alt1)
+  # and a Type-I comparison (alt2 vs simulation) are BOTH statistically valid
+  # in the same run, letting facet_wrap()'s length(cmps) > 1 branch actually
+  # execute rather than sit untested.
   skip_if_not_installed("patchwork")
-  power_sse <- fake_ppe_sse_object(df = 1, ncp = 10, n = 60L, seed = 44L)
-  type1_sse <- fake_ppe_type1_sse_object(df = 1, n = 60L, seed = 44L)
-
+  sse <- fake_ppe_mixed_sse_object(df = 1, powerNcp = 10, n = 80L, seed = 44L)
   power_cmp <- sseComparison("simulation", "alt1", df = 1, label = "power check")
-  type1_cmp <- sseComparison("alt1", "simulation", df = 1, label = "type1 check")
+  type1_cmp <- sseComparison("alt2", "simulation", df = 1, label = "type1 check")
 
-  p_power <- plotSSEPpeDiagnostics(power_sse, comparisons = power_cmp,
-                                   bootstrapSamples = 20L, bootSeed = 5L)
-  p_type1 <- plotSSEPpeDiagnostics(type1_sse, comparisons = type1_cmp,
-                                   bootstrapSamples = 20L, bootSeed = 5L)
+  p <- plotSSEPpeDiagnostics(
+    sse, comparisons = list(power_cmp, type1_cmp),
+    bootstrapSamples = 20L, bootSeed = 5L
+  )
 
-  diag <- rbind(attr(p_power, "ppeDiagnostics"), attr(p_type1, "ppeDiagnostics"))
+  diag <- attr(p, "ppeDiagnostics")
   expect_equal(nrow(diag), 2L)
   expect_equal(diag$comparison, c("power check", "type1 check"))
+  expect_equal(diag$parameter, c("ncp", "df"))
+  # Each row's estimate is close to the true value that generated it (ncp=10,
+  # df=1), confirming the two rows are not both diagnosing the same fit.
+  expect_equal(diag$estimate[diag$parameter == "ncp"], 10, tolerance = 0.5)
+  expect_equal(diag$estimate[diag$parameter == "df"], 1, tolerance = 0.5)
 
-  # And a single call with both comparisons resolved together also produces
-  # one row per comparison, faceted rather than collapsed.
-  p_both <- plotSSEPpeDiagnostics(
-    power_sse, comparisons = list(power_cmp), bootstrapSamples = 20L, bootSeed = 5L
-  )
-  expect_equal(nrow(attr(p_both, "ppeDiagnostics")), 1L)
+  # And the facets themselves are comparison-specific, not one curve shared
+  # across both panels: each ECDF layer's points belong to exactly one facet.
+  built <- ggplot2::ggplot_build(p$patches$plots[[1]])
+  ecdf_layer <- built$data[[2]]
+  panel_by_group <- table(PANEL = ecdf_layer$PANEL, group = ecdf_layer$group)
+  expect_equal(unname(rowSums(panel_by_group > 0)), c(1L, 1L))
 })
 
 test_that("a criticalValue-only comparison is refused", {

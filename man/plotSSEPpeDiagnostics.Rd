@@ -49,8 +49,13 @@ run reproduce the same diagnostic without the caller managing seeds.}
 A \code{ggplot} object (a \code{patchwork} combination of an ECDF panel and
 a QQ panel), with the numeric diagnostics attached as a
 \code{"ppeDiagnostics"} attribute (one row per comparison, with \code{comparison},
-\code{cvm}, \code{p_value}, \code{n}, \code{n_nonpositive}, \code{df}, \code{df_source}) so results
-are auditable without reading pixels.
+\code{parameter} (\code{"ncp"} or \code{"df"}, whichever was diagnosed), \code{estimate}
+(the fitted value of that parameter -- the value the discrepancy and
+p-value are actually about), \code{cvm}, \code{p_value}, \code{n}, \code{n_nonpositive},
+\code{df} (the comparison's declared/nominal df, kept comparable across
+power and type1 rows; for a Type-I comparison this can differ from
+\code{estimate}), and \code{df_source}) so results are auditable without reading
+pixels.
 }
 \description{
 \code{ppeSummary()}/\code{plotSSEPpePower()} treat the retained likelihood-ratio test
