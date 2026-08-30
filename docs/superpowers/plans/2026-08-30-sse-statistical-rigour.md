@@ -1426,6 +1426,43 @@ Implement by branching on `unique(mode)` across the resolved comparisons. When
 both appear, render the power panel and warn that the Type-I comparisons were
 omitted, directing the reader to `ppeSummary()`.
 
+**Resolve comparisons exactly once.** A first implementation of this step
+resolved comparisons twice: once to inspect the mode composition (deciding
+power/Type-I/mixed), wrapped in `suppressWarnings()` so the inferred-df warning
+would not fire before the "real" pass; then again inside
+`.ppePowerPlotDataMle()`. The second pass was handed the already-resolved list
+rather than `NULL`, so `.resolveComparisons()`'s null-check branch — the only
+place `.legacyComparisons()` and its warning run — never re-executed. Traced
+with `trace()`: **the warning fires zero times**, not once as intended. This is
+the same defect Step 7 already fixed once (`ppe = FALSE` silently dropping the
+signal that df was guessed), recurring through a different mechanism, on the
+package's primary user-facing entry point — `ppeSummary()`'s single-pass
+resolution was unaffected and warns correctly, which is how the gap was found.
+
+Resolve comparisons once, unsuppressed, split the single resolved list by
+`mode`, and thread that list through directly rather than letting a second call
+re-enter `comparisons %||% x$runInfo$comparisons` and take the null-check
+branch again. Add a test that calls `plotSSEPpePower()` itself (not
+`.ppePowerPlotData()` directly, which bypasses the two-pass logic entirely) on
+a fixture with no explicit comparison, and asserts the warning fires exactly
+once via `testthat::capture_warnings()`.
+
+**Strengthen `.ppeDefaultSeed()`'s label hash.** `sum(utf8ToInt(label)) %%
+100000L` is permutation-invariant, so distinct labels can collide — not only
+contrived anagrams but plausible real ones: `"dose A vs B"` and `"dose B vs
+A"`, a natural pair for the two directions of one comparison, both hash to 887.
+Colliding comparisons then bootstrap from the same seed, undermining the
+"remaining distinct across comparisons" guarantee the function's own comment
+claims. Weight by position:
+
+```r
+offset <- sum(utf8ToInt(comparison$label) * seq_along(utf8ToInt(comparison$label))) %% 100000L
+```
+
+This resolves both the anagram case and the "dose A vs B"/"dose B vs A" case.
+Add a test asserting two comparisons whose labels are permutations of each
+other get different bootstrap seeds.
+
 - [ ] **Step 8: Run the full suite and commit**
 
 Run: `NOT_CRAN=true Rscript -e 'pkgload::load_all("."); testthat::test_dir("tests/testthat", reporter="progress", stop_on_failure=FALSE)'`
