@@ -347,50 +347,39 @@ NULL
   }
 }
 
-.ppePowerPlotData <- function(
-  x,
-  thresholds = NULL,
-  models = NULL,
-  studySizes = NULL,
-  targetPower = 99,
-  conf.level = 0.95
+.emptyPpePowerPlotData <- function(method) {
+  base <- data.frame(
+    model_label = character(0),
+    threshold = numeric(0),
+    degrees_freedom = integer(0),
+    base_study_size = integer(0),
+    study_size = integer(0),
+    power = numeric(0),
+    power_lower = numeric(0),
+    power_upper = numeric(0),
+    stringsAsFactors = FALSE
+  )
+  if (identical(method, "exceedance")) {
+    base$threshold_exceedance_probability <- numeric(0)
+    base$threshold_implied_ncp <- numeric(0)
+  } else {
+    base$mle_ncp <- numeric(0)
+    base$mle_n_retained <- integer(0)
+    base$mle_n_nonpositive <- integer(0)
+    base$mle_boundary <- logical(0)
+  }
+  base
+}
+
+# Today's estimator, unchanged: for each threshold separately, invert that
+# threshold's own exceedance rate into a noncentrality. Kept byte-identical
+# under `method = "exceedance"` -- the only addition is exposing the
+# per-threshold probability/noncentrality that were already computed
+# internally, under names that can never be confused with the single
+# whole-distribution noncentrality `method = "distribution_mle"` fits.
+.ppePowerPlotDataExceedance <- function(
+  x, delta_data, thresholds, base_study, targetPower, conf.level, studySizes
 ) {
-  .assertSSEObject(x)
-  checkmate::assertNumber(targetPower, lower = 1, upper = 99.9, finite = TRUE)
-  checkmate::assertNumber(conf.level, lower = 0.5, upper = 0.999, finite = TRUE)
-  if (!is.null(studySizes)) {
-    checkmate::assertIntegerish(
-      studySizes,
-      lower = 1,
-      any.missing = FALSE,
-      min.len = 1L
-    )
-    studySizes <- sort(unique(as.integer(studySizes)))
-  }
-
-  base_study <- .studySampleSize(x)
-  delta_data <- .ofvDeltaPlotData(x, models = models)
-  if (nrow(delta_data) == 0L) {
-    return(data.frame(
-      model_label = character(0),
-      threshold = numeric(0),
-      degrees_freedom = integer(0),
-      base_study_size = integer(0),
-      study_size = integer(0),
-      power = numeric(0),
-      power_lower = numeric(0),
-      power_upper = numeric(0),
-      stringsAsFactors = FALSE
-    ))
-  }
-
-  thresholds <- thresholds %||% sort(unique(x$powerSummary$threshold[x$powerSummary$threshold > 0]))
-  checkmate::assertNumeric(thresholds, any.missing = FALSE, min.len = 1L, lower = 0)
-  thresholds <- sort(unique(as.numeric(thresholds[thresholds > 0])))
-  if (length(thresholds) == 0L) {
-    .abortSSE("PPE plotting requires at least one positive OFV threshold.")
-  }
-
   rows <- list()
   row_index <- 1L
   for (model_label in unique(delta_data$model_label)) {
@@ -451,6 +440,8 @@ NULL
           threshold = threshold,
           df = df
         ),
+        threshold_exceedance_probability = point_prob,
+        threshold_implied_ncp = point_ncp,
         stringsAsFactors = FALSE
       )
       row_index <- row_index + 1L
@@ -458,11 +449,156 @@ NULL
   }
 
   if (row_index == 1L) {
-    return(rows[0])
+    return(.emptyPpePowerPlotData("exceedance"))
   }
 
   data <- do.call(rbind, rows)
   data[order(data$threshold, data$model_label, data$study_size), , drop = FALSE]
+}
+
+# The new default: one noncentrality per comparison, fit by maximum
+# likelihood from the WHOLE retained distribution (.ppeChiSquareMle()), then
+# scaled linearly with study size. Unlike the exceedance estimator, this fit
+# does not depend on `threshold` at all -- it is computed once per comparison
+# and reused for every threshold, which is the entire point of the change.
+.ppePowerPlotDataMle <- function(
+  x, comparisons, models, thresholds, base_study, targetPower, studySizes,
+  nonpositivePolicy
+) {
+  # ppe = FALSE: unlike comparisonSummary()'s reporting context, a silent
+  # inferred-df warning here would fire on every plot call for runs that
+  # never declared explicit sseComparison()s (e.g. every fixture in this
+  # package's own test suite), which is the same silent-by-default posture
+  # the exceedance branch already has via .modelDegreesFreedom().
+  cmps <- .resolveComparisons(
+    x, comparisons %||% x$runInfo$comparisons, models = models, ppe = FALSE
+  )
+
+  ineligible <- Filter(function(cmp) !isTRUE(cmp$ppeEligible), cmps)
+  if (length(ineligible) > 0L) {
+    bad <- vapply(ineligible, `[[`, character(1), "label")
+    .abortSSE(c(
+      "{length(bad)} comparison{?s} not eligible for distribution-based PPE: {.val {bad}}.",
+      "i" = "PPE assumes a noncentral chi-square alternative, which an explicit {.arg criticalValue} gives no basis for.",
+      "i" = "Build the comparison with {.arg df} instead of {.arg criticalValue}, or use {.arg method = \"exceedance\"}."
+    ))
+  }
+
+  rows <- list()
+  row_index <- 1L
+  for (cmp in cmps) {
+    test_stat <- .comparisonTestStatistic(x, cmp)
+    if (length(test_stat) == 0L) {
+      next
+    }
+
+    mle_fit <- .ppeChiSquareMle(test_stat, df = cmp$df)
+    .ppeApplyNonpositivePolicy(mle_fit$nNonPositive, mle_fit$n, nonpositivePolicy)
+
+    # The non-simulation member of the comparison -- mirrors what
+    # .ofvDeltaPlotData()'s `model_label` always was for the legacy
+    # power-mode comparisons the exceedance branch still builds.
+    other_label <- if (identical(cmp$mode, "power")) cmp$reduced else cmp$full
+
+    for (threshold in thresholds) {
+      sizes <- studySizes %||% .defaultPpeStudySizes(
+        baseStudySize = base_study$size,
+        pointNcp = mle_fit$estimate,
+        threshold = threshold,
+        df = cmp$df,
+        targetPower = targetPower
+      )
+
+      scaled_ncp <- mle_fit$estimate * sizes / base_study$size
+
+      rows[[row_index]] <- data.frame(
+        model_label = other_label,
+        threshold = threshold,
+        degrees_freedom = cmp$df,
+        base_study_size = base_study$size,
+        study_size = sizes,
+        power = 100 * vapply(
+          scaled_ncp,
+          .ppeTailProbability,
+          numeric(1),
+          threshold = threshold,
+          df = cmp$df
+        ),
+        # Task 6 fills these from the parametric bootstrap. An invented
+        # interval here would be worse than an absent one -- see the module
+        # header for why this task does not attempt one.
+        power_lower = NA_real_,
+        power_upper = NA_real_,
+        mle_ncp = mle_fit$estimate,
+        mle_n_retained = mle_fit$nRetained,
+        mle_n_nonpositive = mle_fit$nNonPositive,
+        mle_boundary = mle_fit$boundary,
+        stringsAsFactors = FALSE
+      )
+      row_index <- row_index + 1L
+    }
+  }
+
+  if (row_index == 1L) {
+    return(.emptyPpePowerPlotData("distribution_mle"))
+  }
+
+  data <- do.call(rbind, rows)
+  data[order(data$threshold, data$model_label, data$study_size), , drop = FALSE]
+}
+
+.ppePowerPlotData <- function(
+  x,
+  thresholds = NULL,
+  models = NULL,
+  studySizes = NULL,
+  targetPower = 99,
+  conf.level = 0.95,
+  method = c("distribution_mle", "exceedance"),
+  comparisons = NULL,
+  nonpositivePolicy = c("warn", "error", "drop")
+) {
+  .assertSSEObject(x)
+  method <- match.arg(method)
+  nonpositivePolicy <- match.arg(nonpositivePolicy)
+  checkmate::assertNumber(targetPower, lower = 1, upper = 99.9, finite = TRUE)
+  checkmate::assertNumber(conf.level, lower = 0.5, upper = 0.999, finite = TRUE)
+  if (!is.null(studySizes)) {
+    checkmate::assertIntegerish(
+      studySizes,
+      lower = 1,
+      any.missing = FALSE,
+      min.len = 1L
+    )
+    studySizes <- sort(unique(as.integer(studySizes)))
+  }
+
+  base_study <- .studySampleSize(x)
+  delta_data <- .ofvDeltaPlotData(x, models = models)
+  if (nrow(delta_data) == 0L) {
+    return(.emptyPpePowerPlotData(method))
+  }
+
+  thresholds <- thresholds %||% sort(unique(x$powerSummary$threshold[x$powerSummary$threshold > 0]))
+  checkmate::assertNumeric(thresholds, any.missing = FALSE, min.len = 1L, lower = 0)
+  thresholds <- sort(unique(as.numeric(thresholds[thresholds > 0])))
+  if (length(thresholds) == 0L) {
+    .abortSSE("PPE plotting requires at least one positive OFV threshold.")
+  }
+
+  if (identical(method, "exceedance")) {
+    return(.ppePowerPlotDataExceedance(
+      x = x, delta_data = delta_data, thresholds = thresholds,
+      base_study = base_study, targetPower = targetPower,
+      conf.level = conf.level, studySizes = studySizes
+    ))
+  }
+
+  .ppePowerPlotDataMle(
+    x = x, comparisons = comparisons, models = models, thresholds = thresholds,
+    base_study = base_study, targetPower = targetPower, studySizes = studySizes,
+    nonpositivePolicy = nonpositivePolicy
+  )
 }
 
 #' @rdname plot-nlmixr2SSE
@@ -718,6 +854,25 @@ plotSSEPower <- function(
 #' @param targetPower Target power percentage used when constructing the default
 #'   `studySizes` grid.
 #' @param conf.level Confidence level for the Monte-Carlo uncertainty ribbon.
+#'   Used only under `method = "exceedance"`; `"distribution_mle"` has no
+#'   uncertainty ribbon yet (see `method` below).
+#' @param method PPE estimator. `"distribution_mle"` (the default) fits ONE
+#'   noncentrality parameter to the whole retained test-statistic
+#'   distribution by maximum likelihood (Ueckert, Karlsson & Hooker 2016;
+#'   the method PsN implements) and scales it linearly with study size; its
+#'   `power_lower`/`power_upper` are `NA` until a future task adds the
+#'   parametric-bootstrap uncertainty. `"exceedance"` is the original
+#'   estimator: for each threshold separately, it inverts that threshold's
+#'   own exceedance rate into a noncentrality, which can imply a different
+#'   effect size at every threshold.
+#' @param comparisons Optional `sseComparison()` object or list of them,
+#'   passed to [.resolveComparisons()][sseComparison()]. Only used under
+#'   `method = "distribution_mle"`; defaults to `x$runInfo$comparisons`, then
+#'   to the legacy simulation-vs-alternative comparisons.
+#' @param nonpositivePolicy What to do when a comparison has non-positive test
+#'   statistics excluded from the `"distribution_mle"` fit: `"warn"` (the
+#'   default), `"error"`, or `"drop"` (silent). See
+#'   `.ppeApplyNonpositivePolicy()`.
 #' @param ... Reserved for future extensions.
 #'
 #' @return A `ggplot` object.
@@ -729,10 +884,15 @@ plotSSEPpePower <- function(
   studySizes = NULL,
   targetPower = 99,
   conf.level = 0.95,
+  method = c("distribution_mle", "exceedance"),
+  comparisons = NULL,
+  nonpositivePolicy = c("warn", "error", "drop"),
   ...
 ) {
   .assertNamespace("ggplot2", "construct SSE plots")
   .assertSSEObject(x)
+  method <- match.arg(method)
+  nonpositivePolicy <- match.arg(nonpositivePolicy)
 
   data <- .ppePowerPlotData(
     x,
@@ -740,7 +900,10 @@ plotSSEPpePower <- function(
     models = models,
     studySizes = studySizes,
     targetPower = targetPower,
-    conf.level = conf.level
+    conf.level = conf.level,
+    method = method,
+    comparisons = comparisons,
+    nonpositivePolicy = nonpositivePolicy
   )
 
   if (nrow(data) == 0L) {
@@ -753,7 +916,7 @@ plotSSEPpePower <- function(
 
   sample_info <- .studySampleSize(x)
 
-  ggplot2::ggplot(
+  p <- ggplot2::ggplot(
     data,
     ggplot2::aes(
       x = study_size,
@@ -762,12 +925,22 @@ plotSSEPpePower <- function(
       fill = model_label,
       group = model_label
     )
-  ) +
-    ggplot2::geom_ribbon(
+  )
+
+  # distribution_mle leaves power_lower/power_upper as NA until a later task
+  # adds the parametric-bootstrap uncertainty; a ribbon built from all-NA
+  # bounds is not a meaningful "no data yet" signal, so skip the layer
+  # entirely rather than let ggplot2 draw nothing but warn about it.
+  has_interval <- any(is.finite(data$power_lower) & is.finite(data$power_upper))
+  if (has_interval) {
+    p <- p + ggplot2::geom_ribbon(
       ggplot2::aes(ymin = power_lower, ymax = power_upper),
       alpha = 0.2,
       colour = NA
-    ) +
+    )
+  }
+
+  p +
     ggplot2::geom_line(linewidth = 0.9) +
     ggplot2::geom_vline(
       xintercept = sample_info$size,

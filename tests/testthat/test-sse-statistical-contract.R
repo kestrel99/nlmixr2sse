@@ -46,8 +46,11 @@ test_that("current PPE inverts the exceedance probability per threshold", {
   sse <- fake_sse_object()
   test_stat <- c(3, 4)  # -delta_ofv for the two-sample fixture
 
-  low <- .ppePowerPlotData(sse, thresholds = 1, studySizes = 12L)
-  high <- .ppePowerPlotData(sse, thresholds = 3.5, studySizes = 12L)
+  # Task 5 made "distribution_mle" (a single whole-distribution noncentrality)
+  # the default; this test pins the older per-threshold estimator, still
+  # available as method = "exceedance", so it must ask for it explicitly.
+  low <- .ppePowerPlotData(sse, thresholds = 1, studySizes = 12L, method = "exceedance")
+  high <- .ppePowerPlotData(sse, thresholds = 3.5, studySizes = 12L, method = "exceedance")
 
   # At the base study size the scaling factor is 1, so each threshold's ncp is
   # solved to reproduce that threshold's own clipped exceedance rate exactly.

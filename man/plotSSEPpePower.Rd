@@ -11,6 +11,9 @@ plotSSEPpePower(
   studySizes = NULL,
   targetPower = 99,
   conf.level = 0.95,
+  method = c("distribution_mle", "exceedance"),
+  comparisons = NULL,
+  nonpositivePolicy = c("warn", "error", "drop"),
   ...
 )
 }
@@ -29,7 +32,29 @@ sample size achieving \code{targetPower}.}
 \item{targetPower}{Target power percentage used when constructing the default
 \code{studySizes} grid.}
 
-\item{conf.level}{Confidence level for the Monte-Carlo uncertainty ribbon.}
+\item{conf.level}{Confidence level for the Monte-Carlo uncertainty ribbon.
+Used only under \code{method = "exceedance"}; \code{"distribution_mle"} has no
+uncertainty ribbon yet (see \code{method} below).}
+
+\item{method}{PPE estimator. \code{"distribution_mle"} (the default) fits ONE
+noncentrality parameter to the whole retained test-statistic
+distribution by maximum likelihood (Ueckert, Karlsson & Hooker 2016;
+the method PsN implements) and scales it linearly with study size; its
+\code{power_lower}/\code{power_upper} are \code{NA} until a future task adds the
+parametric-bootstrap uncertainty. \code{"exceedance"} is the original
+estimator: for each threshold separately, it inverts that threshold's
+own exceedance rate into a noncentrality, which can imply a different
+effect size at every threshold.}
+
+\item{comparisons}{Optional \code{sseComparison()} object or list of them,
+passed to \link[=sseComparison]{.resolveComparisons()}. Only used under
+\code{method = "distribution_mle"}; defaults to \code{x$runInfo$comparisons}, then
+to the legacy simulation-vs-alternative comparisons.}
+
+\item{nonpositivePolicy}{What to do when a comparison has non-positive test
+statistics excluded from the \code{"distribution_mle"} fit: \code{"warn"} (the
+default), \code{"error"}, or \code{"drop"} (silent). See
+\code{.ppeApplyNonpositivePolicy()}.}
 
 \item{...}{Reserved for future extensions.}
 }
