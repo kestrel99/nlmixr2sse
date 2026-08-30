@@ -48,7 +48,14 @@ test_that(".ppeChiSquareMle rejects both df and ncp supplied together", {
 })
 
 test_that(".ppeChiSquareMle rejects neither df nor ncp supplied", {
-  expect_error(.ppeChiSquareMle(c(1, 2, 3)), "exactly one")
+  # c(-1, 1) has only 1 positive value, so it discriminates the validation
+  # order: with df/ncp checked first (as implemented), this reports "exactly
+  # one" -- with the "at least 2 positive" check first, it would instead
+  # report the (also true, but not the actual) problem: too few positive
+  # values. c(1, 2, 3) does NOT discriminate this -- both orderings emit
+  # "exactly one" for it, since 3 positive values pass the count check
+  # regardless of order.
+  expect_error(.ppeChiSquareMle(c(-1, 1)), "exactly one")
 })
 
 test_that("the nonpositive policy controls warning and abort, never the counts", {

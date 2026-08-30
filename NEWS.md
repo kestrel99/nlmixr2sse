@@ -1,5 +1,23 @@
 # nlmixr2sse 0.1
 
+* `plotSSEPpePower()`/`.ppePowerPlotData()` gain `method = c("distribution_mle",
+  "exceedance")`. **`"distribution_mle"` is the new default**: it fits ONE
+  noncentrality parameter to the whole retained likelihood-ratio test-statistic
+  distribution by maximum likelihood (Ueckert, Karlsson & Hooker 2016, the
+  method PsN implements) and scales it linearly with study size, replacing
+  the previous per-threshold exceedance inversion, which used only one bit
+  of information per threshold and could imply a different effect size at
+  every threshold. The old estimator remains available as `method =
+  "exceedance"`, unchanged in behaviour, with its previously-internal
+  per-threshold values now exposed as `threshold_exceedance_probability` and
+  `threshold_implied_ncp` so the two estimators' outputs can never be
+  confused. `distribution_mle`'s `power_lower`/`power_upper` are `NA` for
+  now (no ribbon is drawn); a parametric-bootstrap uncertainty interval is
+  planned for a future release. PPE now requires the comparison to be built
+  with `sseComparison(df = )`, not `sseComparison(criticalValue = )`:
+  `distribution_mle` assumes a noncentral chi-square alternative that an
+  explicit `criticalValue` gives no basis for, and refuses such comparisons
+  outright.
 * `runSSEControl(randomEstimationInits = )` is soft-deprecated in favor of
   `referenceInitials`/`alternativeInitials`, which split the same
   starting-value policy by model role: `referenceInitials` controls the

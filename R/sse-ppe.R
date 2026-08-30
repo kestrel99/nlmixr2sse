@@ -50,9 +50,10 @@
   estimate_ncp <- is.null(ncp)
   # Validate the df/ncp contract BEFORE counting retained values. The plan's
   # original ordering checked "at least 2 positive values" first, so
-  # `.ppeChiSquareMle(c(1, 2))` (neither df nor ncp supplied) reported "needs
-  # at least 2 positive test statistics" -- true but not the actual problem.
-  # A caller who forgot both arguments should be told that.
+  # `.ppeChiSquareMle(c(-1, 1))` (neither df nor ncp supplied, and only 1
+  # positive value) reported "needs at least 2 positive test statistics" --
+  # true but not the actual problem. A caller who forgot both arguments
+  # should be told that.
   if (estimate_ncp == is.null(df)) {
     .abortSSE("Supply exactly one of {.arg df} and {.arg ncp}; the other is estimated.")
   }
