@@ -17,7 +17,19 @@
 .ofvByLabel <- function(x) {
   row_mask <- .summaryMask(x$rawResults, outFilter = x$runInfo$control$outFilter %||% NULL)
   filtered <- x$rawResults[row_mask, , drop = FALSE]
-  samples <- sort(unique(x$rawResults$sample[x$rawResults$sample > 0L]))
+
+  # Anchor on the DECLARED replicate set, not on whatever reached rawResults.
+  # A replicate where both models failed before writing any row would otherwise
+  # vanish from n_attempted, n_paired_evaluable and n_excluded alike, so no
+  # count would record that it ever existed -- the exact blind spot this
+  # module's paired-denominator design exists to eliminate.
+  observed <- sort(unique(x$rawResults$sample[x$rawResults$sample > 0L]))
+  declared <- x$runInfo$samples
+  samples <- if (!is.null(declared) && length(declared) == 1L && is.finite(declared)) {
+    sort(union(seq_len(as.integer(declared)), observed))
+  } else {
+    observed
+  }
   labels <- .knownModelLabels(x)
   ofv <- lapply(labels, function(label) {
     rows <- filtered$sample > 0L & filtered$model_label == label
@@ -51,6 +63,14 @@
 #' the model-based (parametric bootstrap) uncertainty computed elsewhere,
 #' hence `interval_type` and the `mcse_probability` naming.
 #'
+#' @details
+#' `mcse_probability` collapses to exactly 0 when `probability` is 0 or 1 --
+#' precisely where the Clopper-Pearson interval is widest. At those
+#' boundaries the interval (`ci_lower`/`ci_upper`), not `mcse_probability`,
+#' is the honest summary of uncertainty; a reader who looks only at the
+#' Monte Carlo standard error there would wrongly conclude the estimate is
+#' exact.
+#'
 #' @param x An `nlmixr2SSE` object.
 #' @param comparisons One or more [sseComparison()] objects, or `NULL` to use
 #'   `x$runInfo$comparisons`.
@@ -82,8 +102,11 @@ comparisonSummary <- function(x, comparisons = NULL, models = NULL,
     prob <- n_exceeding / n_paired
     fraction <- n_paired / length(full)
     if (fraction < minPairedFraction) {
+      # Raw counts, not just a rounded percentage: round(100 * 1/200) is 0, so a
+      # percentage alone can report "0%" when replicates do remain, and "100%"
+      # when some were excluded -- the opposite of what this warning is for.
       cli::cli_warn(c(
-        "!" = "Only {round(100 * fraction)}% of replicates are paired evaluable for {.val {cmp$label}}.",
+        "!" = "Only {n_paired} of {length(full)} replicates are paired evaluable for {.val {cmp$label}}.",
         "i" = "Failed fits are excluded, not imputed; operating characteristics may be biased."
       ))
     }

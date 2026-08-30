@@ -41,3 +41,11 @@ counts, with no distributional assumption about \code{T}. This is distinct from
 the model-based (parametric bootstrap) uncertainty computed elsewhere,
 hence \code{interval_type} and the \code{mcse_probability} naming.
 }
+\details{
+\code{mcse_probability} collapses to exactly 0 when \code{probability} is 0 or 1 --
+precisely where the Clopper-Pearson interval is widest. At those
+boundaries the interval (\code{ci_lower}/\code{ci_upper}), not \code{mcse_probability},
+is the honest summary of uncertainty; a reader who looks only at the
+Monte Carlo standard error there would wrongly conclude the estimate is
+exact.
+}

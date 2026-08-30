@@ -25,10 +25,12 @@ test_that("the empirical interval is reproducible from the reported counts", {
 
   expect_equal(s$n_exceeding, 12L)
   expect_equal(s$probability, 12 / 20)
-  expect_equal(
-    c(s$ci_lower, s$ci_upper),
-    c(stats::qbeta(0.025, 12, 9), stats::qbeta(0.975, 13, 8))
-  )
+  # Independent oracle: stats::binom.test()'s exact (Clopper-Pearson) interval,
+  # not a second call to the same stats::qbeta() formula the implementation
+  # uses -- that would only catch a discrepancy, never a wrong-but-internally
+  # -consistent interval.
+  oracle <- stats::binom.test(12, 20, conf.level = 0.95)$conf.int
+  expect_equal(c(s$ci_lower, s$ci_upper), as.numeric(oracle))
 })
 
 test_that("the test statistic is reduced minus full regardless of which was simulated", {
@@ -69,9 +71,11 @@ test_that("the minPairedFraction warning fires below the threshold and not above
   )
   cmp <- sseComparison("simulation", "alt1", df = 1)
 
+  # Raw counts, not a rounded percentage: round(100 * 1/200) is "0%", which
+  # would misreport as "none remain" -- the message must name the counts.
   expect_warning(
     comparisonSummary(sse, comparisons = cmp, minPairedFraction = 0.7),
-    "60%"
+    "3 of 5"
   )
   expect_no_warning(
     comparisonSummary(sse, comparisons = cmp, minPairedFraction = 0.5)
@@ -85,10 +89,13 @@ test_that("a comparison with zero paired evaluable replicates aborts, naming the
   )
   cmp <- sseComparison("simulation", "alt1", df = 1, label = "no_overlap")
 
-  expect_error(
-    comparisonSummary(sse, comparisons = cmp),
-    "no_overlap"
-  )
+  err <- capture_sse_error(comparisonSummary(sse, comparisons = cmp))
+  expect_s3_class(err, "error")
+  # .abortSSE() echoes the comparison's own label in nearly every abort in
+  # this codebase, so matching only "no_overlap" would pass even if the
+  # message said something else entirely was wrong. It must also say why.
+  expect_match(conditionMessage(err), "no_overlap")
+  expect_match(conditionMessage(err), "paired evaluable")
 })
 
 test_that("multiple comparisons produce one row each, in the order supplied", {
@@ -131,4 +138,54 @@ test_that("mcse_probability equals sqrt(p(1-p)/n) and is 0 at p = 0 or p = 1", {
   s_none <- comparisonSummary(sse_none, comparisons = sseComparison("simulation", "alt1", df = 1))
   expect_equal(s_none$probability, 0)
   expect_equal(s_none$mcse_probability, 0)
+})
+
+# --- declared-vs-observed replicate anchoring -------------------------------
+#
+# .ofvByLabel() previously derived its sample set from rawResults alone. A
+# replicate where BOTH models failed before writing any row -- e.g. the
+# simulated dataset itself failed to generate, or the harness caught an
+# exception before either fit ran -- then left no row for that sample in
+# rawResults at all, and it silently vanished from every count. That is
+# exactly the blind spot paired denominators exist to eliminate: a reader
+# auditing n_attempted vs. n_excluded should never be able to lose a
+# replicate without a trace.
+
+test_that("a replicate absent from both models is counted in n_attempted and n_excluded", {
+  # Sample 2 has NA in both vectors, so fake_paired_sse_object() writes no
+  # row for it at all -- it is absent from rawResults, not merely a failed
+  # fit recorded with a non-finite OFV.
+  sse <- fake_paired_sse_object(
+    full_ofv    = c(100, NA, 102),
+    reduced_ofv = c(110, NA, 114)
+  )
+  cmp <- sseComparison("simulation", "alt1", df = 1)
+
+  s <- comparisonSummary(sse, comparisons = cmp)
+
+  expect_equal(s$n_attempted, 3L)
+  expect_equal(s$n_full_evaluable, 2L)
+  expect_equal(s$n_reduced_evaluable, 2L)
+  expect_equal(s$n_paired_evaluable, 2L)
+  expect_equal(s$n_excluded, 1L)
+})
+
+test_that("non-contiguous observed sample IDs still produce correct counts", {
+  # Samples 3 and 4 are absent from both models (no row written for either),
+  # so rawResults$sample only ever takes the non-contiguous values 1, 2, 5 --
+  # while runInfo$samples declares 5 attempted replicates. The union of the
+  # declared range and the observed IDs must still equal 1:5.
+  sse <- fake_paired_sse_object(
+    full_ofv    = c(100, 101, NA, NA, 104),
+    reduced_ofv = c(110, 111, NA, NA, 114)
+  )
+  cmp <- sseComparison("simulation", "alt1", df = 1)
+
+  s <- comparisonSummary(sse, comparisons = cmp)
+
+  expect_equal(s$n_attempted, 5L)
+  expect_equal(s$n_full_evaluable, 3L)
+  expect_equal(s$n_reduced_evaluable, 3L)
+  expect_equal(s$n_paired_evaluable, 3L)
+  expect_equal(s$n_excluded, 2L)
 })
