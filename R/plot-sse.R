@@ -472,7 +472,8 @@ NULL
 # silently skipped rather than forced into a curve that means nothing for it.
 .ppePowerPlotDataMle <- function(
   x, comparisons, models, thresholds, base_study, targetPower, studySizes,
-  nonpositivePolicy, conf.level = 0.95, bootstrapSamples = 1000L, bootSeed = NULL
+  nonpositivePolicy, conf.level = 0.95, bootstrapSamples = 1000L, bootSeed = NULL,
+  resolvedComparisons = NULL
 ) {
   # ppe = TRUE: distribution_mle treats df as KNOWN -- it is the exponent in
   # the noncentral chi-square density the whole fit rests on, not a cosmetic
@@ -484,7 +485,18 @@ NULL
   # whole feature replaces, not a precedent to match. `dfSource` is also
   # copied into the `df_source` output column below so provenance survives
   # even when the caller suppresses the warning.
-  cmps <- .resolveComparisons(
+  #
+  # resolvedComparisons, when supplied, is used AS-IS instead of resolving
+  # `comparisons %||% x$runInfo$comparisons` again. plotSSEPpePower() passes
+  # its own already-resolved, mode-split list here: re-resolving a non-NULL
+  # list would never re-enter .resolveComparisons()'s comparisons-is-NULL
+  # branch, which is the ONLY place .legacyComparisons() (and its
+  # inferred-df warning) ever runs -- so a second resolve of an
+  # already-resolved list would silently make the warning never fire at all,
+  # not fire it a second time. Bypassing resolution here (rather than
+  # resolving twice and suppressing the second) is what keeps the warning
+  # firing exactly once, from wherever the FIRST resolve happens.
+  cmps <- resolvedComparisons %||% .resolveComparisons(
     x, comparisons %||% x$runInfo$comparisons, models = models, ppe = TRUE
   )
 
@@ -656,11 +668,14 @@ NULL
       rate_lower <- NA_real_
       rate_upper <- NA_real_
       if (has_interval) {
-        # A larger df pushes the chi-square rightward, LOWERING the tail
-        # probability at a fixed threshold -- the opposite direction from
-        # the power curve's ncp bootstrap. min/max keeps rate_lower <=
-        # rate_upper regardless of that reversal, rather than assuming the
-        # low end of the df interval maps to the low end of the rate one.
+        # A larger df pushes the chi-square rightward, RAISING the tail
+        # probability at a fixed threshold (measured: 0.019 at df = 0.5, up
+        # to 1.000 at df = 32, holding threshold fixed) -- so the low end of
+        # the df bootstrap interval maps to the low end of the rate
+        # interval. min/max below does not rely on that direction, though:
+        # it keeps rate_lower <= rate_upper regardless of which way the
+        # mapping runs, defensive coding rather than a load-bearing claim
+        # about monotonicity.
         r_lo_df <- 100 * .ppeTailProbability(threshold, df = boot$ci_lower, ncp = 0)
         r_hi_df <- 100 * .ppeTailProbability(threshold, df = boot$ci_upper, ncp = 0)
         rate_lower <- min(r_lo_df, r_hi_df)
@@ -706,7 +721,13 @@ NULL
   comparisons = NULL,
   nonpositivePolicy = c("warn", "error", "drop"),
   bootstrapSamples = 1000L,
-  bootSeed = NULL
+  bootSeed = NULL,
+  # Set only by plotSSEPpePower(), which resolves comparisons itself (once,
+  # unsuppressed) to split them by mode before this function ever runs; see
+  # .ppePowerPlotDataMle()'s header for why passing the resolved list through
+  # here -- rather than back through `comparisons` -- is what keeps the
+  # inferred-df warning firing exactly once instead of zero times.
+  resolvedComparisons = NULL
 ) {
   .assertSSEObject(x)
   method <- match.arg(method)
@@ -748,7 +769,8 @@ NULL
     x = x, comparisons = comparisons, models = models, thresholds = thresholds,
     base_study = base_study, targetPower = targetPower, studySizes = studySizes,
     nonpositivePolicy = nonpositivePolicy, conf.level = conf.level,
-    bootstrapSamples = bootstrapSamples, bootSeed = bootSeed
+    bootstrapSamples = bootstrapSamples, bootSeed = bootSeed,
+    resolvedComparisons = resolvedComparisons
   )
 }
 
@@ -1156,19 +1178,20 @@ plotSSEPpePower <- function(
   nonpositivePolicy <- match.arg(nonpositivePolicy)
 
   if (identical(method, "distribution_mle")) {
-    # Split by mode up front so a Type-I comparison never reaches the
-    # sample-size curve and a power comparison never reaches the
-    # point-range. Resolved here with the ppe = TRUE inferred-df warning
-    # suppressed: .ppePowerPlotData() below (the self-contained entry point
-    # its own tests call directly) resolves again and raises that warning
-    # for real, once; this pass exists only to inspect mode composition and
-    # must not double it. When comparisons is later replaced with the
-    # already-resolved power-mode subset, models is dropped too --
-    # .resolveComparisons() refuses supplying both comparisons and models,
-    # and the models filter has already been applied by this resolution.
-    mode_cmps <- suppressWarnings(.resolveComparisons(
+    # Resolve comparisons EXACTLY ONCE here, unsuppressed, so the
+    # inferred-df warning fires exactly once when it applies. It is tempting
+    # to resolve again "for real" inside .ppePowerPlotData() below and
+    # suppress this pass instead -- that was tried and is wrong: a second
+    # resolve handed a non-NULL (already-resolved) comparisons list never
+    # re-enters .resolveComparisons()'s comparisons-is-NULL branch, which is
+    # the ONLY place .legacyComparisons() (and its warning) ever runs, so
+    # the "real" pass would silently never warn at all rather than warning
+    # twice. Splitting by mode up front also means a Type-I comparison never
+    # reaches the sample-size curve and a power comparison never reaches the
+    # point-range.
+    mode_cmps <- .resolveComparisons(
       x, comparisons %||% x$runInfo$comparisons, models = models, ppe = TRUE
-    ))
+    )
     is_type1 <- vapply(mode_cmps, function(cmp) identical(cmp$mode, "type1"), logical(1))
     type1_cmps <- mode_cmps[is_type1]
     power_cmps <- mode_cmps[!is_type1]
@@ -1190,23 +1213,40 @@ plotSSEPpePower <- function(
       ))
     }
 
-    comparisons <- power_cmps
-    models <- NULL
+    # power_cmps is threaded straight into .ppePowerPlotData() via
+    # resolvedComparisons, NOT back through `comparisons` -- passing it
+    # through `comparisons` would have .ppePowerPlotDataMle() resolve it a
+    # second time, the exact mechanism that dropped the warning to zero
+    # fires above. resolvedComparisons bypasses resolution there entirely.
+    data <- .ppePowerPlotData(
+      x,
+      thresholds = thresholds,
+      models = models,
+      studySizes = studySizes,
+      targetPower = targetPower,
+      conf.level = conf.level,
+      method = method,
+      comparisons = NULL,
+      nonpositivePolicy = nonpositivePolicy,
+      bootstrapSamples = bootstrapSamples,
+      bootSeed = bootSeed,
+      resolvedComparisons = power_cmps
+    )
+  } else {
+    data <- .ppePowerPlotData(
+      x,
+      thresholds = thresholds,
+      models = models,
+      studySizes = studySizes,
+      targetPower = targetPower,
+      conf.level = conf.level,
+      method = method,
+      comparisons = comparisons,
+      nonpositivePolicy = nonpositivePolicy,
+      bootstrapSamples = bootstrapSamples,
+      bootSeed = bootSeed
+    )
   }
-
-  data <- .ppePowerPlotData(
-    x,
-    thresholds = thresholds,
-    models = models,
-    studySizes = studySizes,
-    targetPower = targetPower,
-    conf.level = conf.level,
-    method = method,
-    comparisons = comparisons,
-    nonpositivePolicy = nonpositivePolicy,
-    bootstrapSamples = bootstrapSamples,
-    bootSeed = bootSeed
-  )
 
   if (nrow(data) == 0L) {
     return(

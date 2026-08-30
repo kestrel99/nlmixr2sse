@@ -173,10 +173,22 @@ test_that("bootstrapSamples = 0 skips the bootstrap without changing the estimat
 })
 
 test_that("bootstrap failures are counted rather than aborting the fit", {
-  res <- .ppeParametricBootstrap(1e-16, df = 1, nRetained = 3L,
-                                 bootstrapSamples = 20L, seed = 5L)
+  # estimate = 1e-16, df = 1, nRetained = 3L (as first tried) produces zero
+  # actual refit failures at this seed -- rchisq() draws from a near-zero
+  # ncp are still almost surely positive, so .ppeChiSquareMle() almost
+  # always has enough retained values to fit. That made
+  # `n_successful + n_failed == bootstrapSamples` tautological: it holds by
+  # construction regardless of whether the tryCatch() error handling in
+  # .ppeParametricBootstrap() does anything at all. df = 1000 with only 2
+  # retained values instead reliably starves most refits (fewer retained
+  # values than the density has effective degrees of freedom), producing
+  # real, non-zero failures to count.
+  res <- .ppeParametricBootstrap(1e10, df = 1000, nRetained = 2L,
+                                 bootstrapSamples = 30L, seed = 5L)
 
-  expect_equal(res$n_successful + res$n_failed, 20L)
+  expect_equal(res$n_successful + res$n_failed, 30L)
+  expect_gt(res$n_failed, 0L)
+  expect_gt(res$n_successful, 0L)
 })
 
 test_that("the df-target bootstrap also brackets its point estimate", {
@@ -205,6 +217,19 @@ test_that(".ppeDefaultSeed wraps correctly for a seed near the integer maximum",
   expect_silent(seed <- .ppeDefaultSeed(sse, cmp))
   expect_false(is.na(seed))
   expect_true(is.integer(seed))
+})
+
+test_that(".ppeDefaultSeed distinguishes permutation-related labels", {
+  # sum(utf8ToInt(label)) is permutation-invariant, so two labels that are
+  # anagrams of each other -- not a contrived case, but a natural pair for
+  # the two directions of one comparison -- collided on the same offset
+  # (887 for both "dose A vs B" and "dose B vs A"). Position-weighting each
+  # character's code by its 1-based index breaks that symmetry.
+  sse <- fake_ppe_sse_object(df = 1, ncp = 8, n = 20L, seed = 42L)
+  cmp_ab <- sseComparison("simulation", "alt1", df = 1, label = "dose A vs B")
+  cmp_ba <- sseComparison("simulation", "alt1", df = 1, label = "dose B vs A")
+
+  expect_false(identical(.ppeDefaultSeed(sse, cmp_ab), .ppeDefaultSeed(sse, cmp_ba)))
 })
 
 # --- ppeSummary() ----------------------------------------------------------

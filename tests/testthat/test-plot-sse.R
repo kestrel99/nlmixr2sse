@@ -74,6 +74,27 @@ test_that("plotSSEPpePower returns a ggplot backed by PPE curve data", {
   )
 })
 
+test_that("plotSSEPpePower warns about inferred df exactly once, not zero or twice", {
+  # Regression test: plotSSEPpePower() resolves comparisons itself (to split
+  # by mode) and then calls .ppePowerPlotData(), which resolves again inside
+  # .ppePowerPlotDataMle(). A version that resolved-and-suppressed for the
+  # mode split, then relied on the second "real" pass to raise the
+  # inferred-df warning, silently warned ZERO times: handing an
+  # already-resolved (non-NULL) comparisons list to the second pass means it
+  # never re-enters .resolveComparisons()'s comparisons-is-NULL branch, the
+  # only place that warning is ever raised. Calling .ppePowerPlotData()
+  # directly (as the test above does) resolves only once and does not
+  # exercise this two-pass path at all -- only plotSSEPpePower() itself can
+  # catch a regression here.
+  sse <- fake_sse_object()
+
+  warnings <- testthat::capture_warnings(
+    plotSSEPpePower(sse, thresholds = 3.84, studySizes = c(6L, 12L, 18L))
+  )
+
+  expect_equal(sum(grepl("Degrees of freedom inferred", warnings)), 1L)
+})
+
 test_that("plot.nlmixr2SSE dispatches to named plot helpers", {
   sse <- fake_sse_object()
 

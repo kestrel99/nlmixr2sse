@@ -274,6 +274,18 @@
 #' identically every time it is re-rendered, while remaining distinct across
 #' runs and across comparisons within one run (via the label offset).
 #'
+#' The label offset is a POSITION-WEIGHTED sum of character codes, not a
+#' plain `sum(utf8ToInt(label))`: a plain sum is permutation-invariant, so
+#' two labels that are anagrams of each other collide on the same offset --
+#' and not just in contrived cases. `"dose A vs B"` and `"dose B vs A"`, a
+#' natural pair of labels for the two directions of one comparison, both sum
+#' to the same total; weighting each character's code by its 1-based
+#' position breaks that symmetry (verified: 887/887 under the plain sum
+#' becomes 4870/4865 weighted). Colliding offsets mean colliding bootstrap
+#' seeds -- and, when the two comparisons' point estimates also happen to
+#' match, byte-identical bootstrap draws -- silently undermining the
+#' "remaining distinct across comparisons" guarantee above.
+#'
 #' The addition is done in double precision and cast back to integer only at
 #' the end: `runInfo$seed` is caller-supplied and can legitimately be close
 #' to `.Machine$integer.max` (2147483647L). Doing `base + offset` in integer
@@ -289,7 +301,8 @@
 #' @noRd
 .ppeDefaultSeed <- function(x, comparison) {
   base <- as.double(x$runInfo$seed %||% 1L)
-  offset <- sum(utf8ToInt(comparison$label)) %% 100000L
+  codes <- utf8ToInt(comparison$label)
+  offset <- sum(codes * seq_along(codes)) %% 100000L
   as.integer((base + offset) %% 2147483647)
 }
 
