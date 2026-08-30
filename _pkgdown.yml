@@ -21,6 +21,11 @@ reference:
   - plotSSEPpeDiagnostics
   - validateSSEPpeScaling
 
+- title: Parameter-draw diagnostics
+  desc: Adequacy diagnostics for `parameterSource = "covariance"` replicate parameter draws.
+  contents:
+  - parameterDrawSummary
+
 - title: Plotting
   desc: Diagnostic and summary plots for SSE runs.
   contents:

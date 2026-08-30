@@ -918,6 +918,35 @@ test_that("runSSE supports raw-results and covariance parameter sources end to e
   ]
   expect_gte(length(unique(signif(cov_tka, 8))), 2L)
   expect_gte(length(unique(signif(cov_omega, 8))), 2L)
+
+  # runSSE() precomputes and caches parameterDrawSummary() for a completed
+  # covariance-mode run (Task 10), rather than leaving every caller to
+  # recompute it from $initialValues.
+  expect_true(is.data.frame(cov_res$parameterDrawSummary))
+  expect_setequal(
+    cov_res$parameterDrawSummary$parameter,
+    cov_res$runInfo$parameterSourceInfo$parameterPartition$drawn
+  )
+  expect_equal(
+    cov_res$parameterDrawSummary,
+    parameterDrawSummary(cov_res)
+  )
+
+  # The cached table must survive a save/reload cycle: calling runSSE() again
+  # on the same, now-completed outputDir short-circuits to
+  # .loadCompletedSSE() (see the early return in runSSE()) rather than
+  # rerunning anything.
+  reloaded <- suppressMessages(
+    runSSE(
+      ref_fit,
+      alternativeModels = sseModel(alt_fit, label = "no_eta"),
+      samples = 2L,
+      seed = 456,
+      control = runSSEControl(parameterSource = "covariance", workers = 1L),
+      outputDir = cov_out
+    )
+  )
+  expect_equal(reloaded$parameterDrawSummary, cov_res$parameterDrawSummary)
 })
 
 test_that("starting-value policy changes no generating value or dataset", {

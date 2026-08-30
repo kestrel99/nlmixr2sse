@@ -233,6 +233,31 @@
   )
 }
 
+# Column set mirrors parameterDrawSummary()'s return (R/sse-parameter-diagnostics.R).
+.emptyParameterDrawSummary <- function() {
+  data.frame(
+    parameter = character(0),
+    n = integer(0),
+    realized_mean = numeric(0),
+    realized_sd = numeric(0),
+    realized_median = numeric(0),
+    realized_q025 = numeric(0),
+    realized_q975 = numeric(0),
+    realized_min = numeric(0),
+    realized_max = numeric(0),
+    target_mean = numeric(0),
+    target_sd = numeric(0),
+    dispersion_ratio = numeric(0),
+    mean_drift_flag = logical(0),
+    lower = numeric(0),
+    upper = numeric(0),
+    n_out_of_domain = integer(0),
+    binding_nu = numeric(0),
+    n_not_positive_definite = integer(0),
+    stringsAsFactors = FALSE
+  )
+}
+
 .emptyRawResults <- function(fit, model_label) {
   prototype <- nlmixr2utils::rawResultsRow(
     fit = fit,
@@ -922,6 +947,75 @@
   )
 }
 
+#' Build the per-parameter targets a covariance-mode draw was seeded from
+#'
+#' Pure and deterministic (no RNG): for each drawn THETA, the fitted value,
+#' its `fit$cov` standard error, and its recoverable finite model bounds
+#' (`fit$ui$iniDf`'s `lower`/`upper`, `-Inf`/`Inf` when unconstrained); for
+#' each drawn OMEGA entry, the fitted value and -- for diagonal entries only,
+#' since `.omegaWishartSpec()` only ever consumes diagonal SEs -- the
+#' reported SE, plus the block's inverse-Wishart binding degrees of freedom
+#' (`nu`, shared by every entry in the block; `NA` when the block has no
+#' usable SE at all).
+#'
+#' Consumed by `parameterDrawSummary()` (R/sse-parameter-diagnostics.R) to
+#' compare these INTENDED targets against what was ACTUALLY drawn.
+#' @noRd
+.parameterDrawTargets <- function(fit, aligned, omega0, drawnBlocks) {
+  theta_rows <- if (length(aligned$drawNames) > 0L) {
+    theta_sd <- sqrt(diag(aligned$cov))
+    ui <- .fitField(fit, "ui")
+    theta_ini <- if (!is.null(ui) && !is.null(ui$iniDf)) {
+      ui$iniDf[!is.na(ui$iniDf$ntheta), , drop = FALSE]
+    } else {
+      NULL
+    }
+    bound <- function(nm, col, default) {
+      if (is.null(theta_ini) || !col %in% names(theta_ini)) {
+        return(default)
+      }
+      row <- theta_ini[theta_ini$name == nm, , drop = FALSE]
+      if (nrow(row) == 0L || is.na(row[[col]][[1L]])) default else row[[col]][[1L]]
+    }
+    data.frame(
+      parameter = aligned$drawNames,
+      target_mean = unname(aligned$theta[aligned$drawNames]),
+      target_sd = unname(theta_sd[aligned$drawNames]),
+      lower = vapply(aligned$drawNames, bound, numeric(1), col = "lower", default = -Inf),
+      upper = vapply(aligned$drawNames, bound, numeric(1), col = "upper", default = Inf),
+      binding_nu = NA_real_,
+      stringsAsFactors = FALSE
+    )
+  } else {
+    NULL
+  }
+
+  omega_rows <- lapply(drawnBlocks, function(idx) {
+    block_entries <- aligned$omegaEntries[
+      aligned$omegaEntries$row %in% idx & aligned$omegaEntries$col %in% idx,
+      ,
+      drop = FALSE
+    ]
+    wishart <- .omegaWishartSpec(omega0[idx, idx, drop = FALSE], aligned$omegaSe[idx])
+    nu <- if (is.null(wishart)) NA_real_ else wishart$nu
+    data.frame(
+      parameter = .matrixCoordLabelsForEntries(block_entries),
+      target_mean = omega0[cbind(block_entries$row, block_entries$col)],
+      target_sd = ifelse(
+        block_entries$diagonal,
+        aligned$omegaSe[block_entries$rowName],
+        NA_real_
+      ),
+      lower = NA_real_,
+      upper = NA_real_,
+      binding_nu = nu,
+      stringsAsFactors = FALSE
+    )
+  })
+
+  do.call(rbind, c(list(theta_rows), omega_rows))
+}
+
 .resolveCovarianceParameterSets <- function(
   fit,
   samples,
@@ -969,6 +1063,11 @@
     lapply(drawn_blocks, entriesOf),
     use.names = FALSE
   ) %||% character(0)
+
+  # Deterministic given the fitted block and SEs (not random), so computed
+  # ONCE here rather than per-replicate; feeds parameterDrawSummary()'s
+  # realized-vs-target comparison.
+  draw_targets <- .parameterDrawTargets(fit, aligned, omega0, drawn_blocks)
 
   # surface why any block was held, so the run record explains itself
   for (h in coverage$held) {
@@ -1112,7 +1211,8 @@
           )
         })
       ),
-      estimationInitialValues = "reference_fit"
+      estimationInitialValues = "reference_fit",
+      targets = draw_targets
     )
   )
 }
@@ -2312,7 +2412,8 @@
   parameterSummary,
   ofvSummary,
   dir,
-  basename = "sse_summary"
+  basename = "sse_summary",
+  parameterDrawSummary = .emptyParameterDrawSummary()
 ) {
   saveRDS(
     list(
@@ -2321,7 +2422,8 @@
       initialValues = initialValues,
       parameterSummary = parameterSummary,
       ofvSummary = ofvSummary,
-      powerSummary = ofvSummary[!is.na(ofvSummary$direction) & ofvSummary$direction == "power", , drop = FALSE]
+      powerSummary = ofvSummary[!is.na(ofvSummary$direction) & ofvSummary$direction == "power", , drop = FALSE],
+      parameterDrawSummary = parameterDrawSummary
     ),
     file.path(dir, paste0(basename, ".rds"))
   )
@@ -2355,7 +2457,8 @@
       initialValues = .wideToLongValues(initial_wide),
       parameterSummary = .emptyParameterSummary(),
       ofvSummary = .emptyOfvSummary(),
-      powerSummary = .emptyOfvSummary()
+      powerSummary = .emptyOfvSummary(),
+      parameterDrawSummary = .emptyParameterDrawSummary()
     )
   }
 
@@ -2369,7 +2472,12 @@
     initialValues = summary_payload$initialValues %||% .emptyInitialValues(),
     parameterSummary = summary_payload$parameterSummary %||% .emptyParameterSummary(),
     ofvSummary = summary_payload$ofvSummary %||% .emptyOfvSummary(),
-    powerSummary = summary_payload$powerSummary %||% .emptyOfvSummary()
+    powerSummary = summary_payload$powerSummary %||% .emptyOfvSummary(),
+    # A run saved before this field existed has no parameterDrawSummary
+    # element at all, so summary_payload$parameterDrawSummary is NULL and
+    # %||% falls back to the empty default -- same legacy-run pattern as
+    # every other field above.
+    parameterDrawSummary = summary_payload$parameterDrawSummary %||% .emptyParameterDrawSummary()
   )
 }
 
@@ -2383,7 +2491,8 @@
   initialValues = .emptyInitialValues(),
   parameterSummary = .emptyParameterSummary(),
   ofvSummary = .emptyOfvSummary(),
-  powerSummary = .emptyOfvSummary()
+  powerSummary = .emptyOfvSummary(),
+  parameterDrawSummary = .emptyParameterDrawSummary()
 ) {
   structure(
     list(
@@ -2394,6 +2503,7 @@
       parameterSummary = parameterSummary,
       ofvSummary = ofvSummary,
       powerSummary = powerSummary,
+      parameterDrawSummary = parameterDrawSummary,
       alternativeSpecs = alternativeSpecs,
       outputDir = outputDir,
       timestamp = timestamp

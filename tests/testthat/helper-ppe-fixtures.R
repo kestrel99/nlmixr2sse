@@ -218,3 +218,57 @@ fake_ppe_mixed_sse_object <- function(df = 1, powerNcp = 10, n = 80L, seed = 101
     powerSummary = outputs$powerSummary
   )
 }
+
+# Draws OMEGA the way each covariance mode does, so the known artefacts are
+# reproduced exactly: log-Cholesky inflates the raw-scale mean by
+# exp(se^2 / (2 * omega^2)); the inverse-Wishart route does not.
+fake_draw_sse_object <- function(mode = c("joint", "independent_iw"),
+                                 omega = 0.6, se = 0.3, n = 200L,
+                                 thetaLower = -Inf, seed = 61L) {
+  mode <- match.arg(mode)
+  has <- exists(".Random.seed", envir = globalenv(), inherits = FALSE)
+  old <- if (has) get(".Random.seed", envir = globalenv(), inherits = FALSE)
+  on.exit({
+    if (has) assign(".Random.seed", old, envir = globalenv())
+  }, add = TRUE)
+  set.seed(seed)
+
+  omega_draws <- if (identical(mode, "joint")) {
+    exp(stats::rnorm(n, mean = log(omega), sd = se / omega))
+  } else {
+    nu <- 3 + 2 * (omega / se)^2
+    vapply(seq_len(n), function(i) {
+      drop(rxode2::cvPost(nu, matrix(omega * (nu - 2) / nu, 1L, 1L), n = 1L))
+    }, numeric(1))
+  }
+  theta_draws <- stats::rnorm(n, mean = 0.45, sd = 0.2)
+
+  sse <- fake_ppe_sse_object(n = n, seed = seed)
+  sse$initialValues <- data.frame(
+    replicate = rep(seq_len(n), 2L),
+    parameter = rep(c("tka", "omega(eta.ka,eta.ka)"), each = n),
+    value = c(theta_draws, omega_draws),
+    stringsAsFactors = FALSE
+  )
+  sse$runInfo$parameterSource <- "covariance"
+  sse$runInfo$covarianceDraw <- mode
+  sse$runInfo$parameterSourceInfo <- list(
+    covarianceDraw = mode,
+    targets = data.frame(
+      parameter = c("tka", "omega(eta.ka,eta.ka)"),
+      target_mean = c(0.45, omega),
+      target_sd = c(0.2, se),
+      lower = c(thetaLower, 0),
+      # binding_nu is a per-OMEGA-BLOCK quantity (the inverse-Wishart degrees
+      # of freedom implied by matching this block's reported SEs), not a
+      # per-parameter one -- but this fixture's OMEGA block has exactly one
+      # eta, so the block-level nu and this row's nu coincide. Computed with
+      # the SAME formula .omegaWishartSpec() uses (p + 3 + 2*(mean/sd)^2),
+      # here with p = 1. NA for THETA rows, which are Normal-drawn and have no
+      # inverse-Wishart degrees of freedom at all.
+      binding_nu = c(NA_real_, 1 + 3 + 2 * (omega / se)^2),
+      stringsAsFactors = FALSE
+    )
+  )
+  sse
+}

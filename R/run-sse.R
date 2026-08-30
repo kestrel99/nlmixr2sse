@@ -726,6 +726,26 @@ runSSE <- function(
   completed_info$fitFailures <- as.integer(n_failed)
   completed_info$addRuns <- state$addRuns
 
+  # Precompute and cache the covariance-mode draw-adequacy diagnostic
+  # (parameterDrawSummary()) once here, rather than leaving every caller to
+  # recompute it from x$initialValues on demand. Wrapped defensively: this is
+  # a diagnostic on top of an already-completed run, so a failure here must
+  # never take down an otherwise-successful runSSE() call.
+  draw_summary <- if (identical(completed_info$parameterSource, "covariance")) {
+    tryCatch(
+      .parameterDrawSummaryCore(completed_info, outputs$initialValues),
+      error = function(e) {
+        cli::cli_warn(c(
+          "!" = "Could not compute the parameter-draw adequacy summary: {conditionMessage(e)}",
+          "i" = "{.fn parameterDrawSummary} can be retried manually on the returned object."
+        ))
+        .emptyParameterDrawSummary()
+      }
+    )
+  } else {
+    .emptyParameterDrawSummary()
+  }
+
   .writeSseResults(outputs$parameterSummary, abs_output_dir)
   .writeSseSummary(
     runInfo = completed_info,
@@ -733,7 +753,8 @@ runSSE <- function(
     initialValues = outputs$initialValues,
     parameterSummary = outputs$parameterSummary,
     ofvSummary = outputs$ofvSummary,
-    dir = abs_output_dir
+    dir = abs_output_dir,
+    parameterDrawSummary = draw_summary
   )
 
   saveRDS(completed_info, file.path(abs_output_dir, "run_info.rds"))
@@ -778,6 +799,7 @@ runSSE <- function(
     initialValues = outputs$initialValues,
     parameterSummary = outputs$parameterSummary,
     ofvSummary = outputs$ofvSummary,
-    powerSummary = outputs$powerSummary
+    powerSummary = outputs$powerSummary,
+    parameterDrawSummary = draw_summary
   )
 }

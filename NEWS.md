@@ -1,5 +1,31 @@
 # nlmixr2sse 0.1
 
+* New `parameterDrawSummary()`: for a completed `parameterSource =
+  "covariance"` run, reports -- for every drawn THETA/OMEGA parameter, one
+  row each -- how the ACTUALLY DRAWN replicate values compare to the
+  INTENDED targets (the fitted value and reported standard error) that
+  seeded the draw. Surfaces both draw modes' documented artefacts
+  numerically: `covarianceDraw = "joint"` draws OMEGA on a log-Cholesky
+  scale, which is unbiased there but inflates the RAW-scale mean upward
+  (`realized_mean` vs `target_mean`, flagged via `mean_drift_flag` at a 5%
+  relative deviation); `covarianceDraw = "independent_iw"` draws each OMEGA
+  block from a single inverse-Wishart `nu` (`binding_nu`) chosen so only the
+  "binding" diagonal element matches its reported SE exactly, so every other
+  element in the block comes out more dispersed than reported
+  (`dispersion_ratio = realized_sd / target_sd`, above 1 for non-binding
+  elements). Also counts, per parameter, THETA draws that fell outside the
+  model's recoverable finite bounds (`n_out_of_domain`) and OMEGA blocks that
+  failed a real positive-definiteness check (`n_not_positive_definite`,
+  expected to be `0` in virtually every realistic case since both draw modes
+  are positive-definite by construction) -- diagnostic counts only, the
+  underlying draws are never truncated or resampled. A `"joint"`-mode result
+  also carries a `"jointDependence"` attribute: empirical pairwise
+  correlations between the drawn parameters, reported descriptively rather
+  than as a claim that they reproduce `fit$cov` exactly. `runSSE()`
+  precomputes and caches this table (`sse$parameterDrawSummary`) for a
+  completed covariance-mode run, persisted through `sse_summary.rds` the
+  same way `parameterSummary`/`ofvSummary` are.
+
 * Parameter summary: added `mcse_bias`/`ci_bias_lower`/`ci_bias_upper` and
   `mcse_relative_bias`/`ci_relative_bias_lower`/`ci_relative_bias_upper`
   (Monte Carlo standard errors of the bias, on the absolute and relative
