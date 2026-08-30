@@ -1,5 +1,28 @@
 # nlmixr2sse 0.1
 
+* New `plotSSEPpeDiagnostics()`: a distribution-adequacy diagnostic for the
+  `distribution_mle` noncentral chi-square fit that `ppeSummary()`/
+  `plotSSEPpePower()` rest on. Computes a Cramer-von Mises discrepancy
+  between the empirical CDF of the retained test statistics and the FITTED
+  chi-square CDF, with a parametric-bootstrap p-value (draw synthetic data
+  from the fitted model, refit, recompute the discrepancy, and see how often
+  a correctly-specified world produces one at least this large), and renders
+  an ECDF-vs-fitted-CDF panel with a pointwise bootstrap envelope alongside a
+  QQ panel (combined via `patchwork`, same as `plotSSEDiagnostics()`). Both
+  `power` and `type1` comparisons are diagnosable -- the diagnosed parameter
+  is `ncp` for a power comparison, `df` for a Type-I one, mirroring
+  `.ppeParametricBootstrap()`'s existing `target` split. Multiple comparisons
+  facet the plot and add one row each to the `"ppeDiagnostics"` attribute
+  (`comparison`, `cvm`, `p_value`, `n`, `n_nonpositive`, `df`, `df_source`),
+  so the numeric diagnostics never require reading pixels. This is evidence
+  about approximation adequacy, not a pass/fail certification: a small
+  `p_value` says the fitted distribution poorly describes the data, but does
+  not by itself invalidate the point estimate, and a large one does not
+  prove the assumption exactly right -- only not detectably wrong at this
+  sample size. A comparison built with `criticalValue` instead of `df` is
+  refused, same as `ppeSummary()`.
+* New minimal `_pkgdown.yml` with a `reference:` index grouping the exported
+  functions (run/configure, comparisons, PPE, plotting).
 * New `ppeSummary()`: one row per comparison combining the `distribution_mle`
   point estimate with a parametric-bootstrap uncertainty interval and
   provenance (`df_source`, `boundary`, retained/discarded counts). The

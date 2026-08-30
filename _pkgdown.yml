@@ -1,0 +1,30 @@
+reference:
+- title: Run and configure
+  desc: Set up and execute a stochastic simulation and estimation run.
+  contents:
+  - runSSE
+  - runSSEControl
+  - sseModel
+  - recomputeSSE
+
+- title: Comparisons
+  desc: Define explicit model comparisons and their empirical operating characteristics.
+  contents:
+  - sseComparison
+  - comparisonSummary
+
+- title: Parametric power estimation (PPE)
+  desc: Maximum-likelihood noncentral chi-square power/Type-I estimation and its adequacy diagnostics.
+  contents:
+  - ppeSummary
+  - plotSSEPpePower
+  - plotSSEPpeDiagnostics
+
+- title: Plotting
+  desc: Diagnostic and summary plots for SSE runs.
+  contents:
+  - plotSSEDiagnostics
+  - plotSSEOfvDistribution
+  - plotSSEParameterBias
+  - plotSSEParameterEstimates
+  - plotSSEPower
