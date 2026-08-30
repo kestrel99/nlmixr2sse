@@ -1102,6 +1102,29 @@ test_that("the nonpositive policy controls warning and abort, never the counts",
 
 - [ ] **Step 7: Add the method branch to `.ppePowerPlotData()`**
 
+Resolve comparisons for the `distribution_mle` branch with `ppe = TRUE`, not
+`FALSE`. The warning `.legacyComparisons()` emits when df is inferred exists
+*specifically* because the MLE treats df as known — an inferred value silently
+feeding a headline power number is precisely the failure this plan's decision
+5 and 12 exist to prevent ("parameter-count differences remain a convenience
+fallback, not an asserted truth"; "record every statistical choice"). That the
+legacy `exceedance` path (via `.modelDegreesFreedom()` directly, not through
+`.resolveComparisons()`) has always been silent here is not a reason for the
+new default method to inherit the same gap — `exceedance` being silent is
+exactly the legacy posture this plan replaces, not a precedent to match.
+
+Also add a `df_source` column to the MLE output, copied from each resolved
+comparison, so provenance survives even for a caller who suppresses the
+warning. Verified empirically that its absence leaves literally no signal
+anywhere — not a warning, not a column — that df was guessed rather than
+declared.
+
+Tests built on fixtures with no explicit `sseComparison` (which is most of this
+package's existing test suite) will now see this warning under
+`method = "distribution_mle"`. Wrap those specific calls in `expect_warning()`
+or `suppressWarnings()` as appropriate — do not pass `ppe = FALSE` to silence
+it package-wide.
+
 Rename the legacy outputs so the two methods cannot be confused, per rigour
 decision 9:
 
