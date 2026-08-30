@@ -56,9 +56,41 @@ test_that("realized dispersion summary statistics are reported per parameter", {
   expect_equal(row$n, 300L)
   expect_true(row$realized_min <= row$realized_median)
   expect_true(row$realized_median <= row$realized_max)
-  # The binding element's realized SD should track its reported target SD
-  # reasonably closely (this fixture's single eta IS the binding element).
+  # dispersion_ratio's own formula, restated -- would pass even if
+  # realized_sd itself were wrong. The concrete check below is what actually
+  # pins the value: the fixture's single eta IS the binding element, so its
+  # realized dispersion should track its reported target SD closely (ratio
+  # near 1), unlike a non-binding element in a larger block, which would come
+  # out systematically above 1 (see the "independent_iw" module docs).
   expect_equal(row$dispersion_ratio, row$realized_sd / row$target_sd)
+  expect_equal(row$dispersion_ratio, 1, tolerance = 0.25)
+})
+
+test_that("joint mode reports pairwise empirical dependence; independent_iw omits it", {
+  # Code-quality review finding: the "jointDependence" attribute (empirical
+  # correlation between jointly-drawn parameters, reported descriptively --
+  # never claimed to reproduce fit$cov exactly) had zero test coverage.
+  joint_sse <- fake_draw_sse_object(mode = "joint", omega = 0.6, se = 0.3,
+                                    n = 300L, seed = 71L)
+  s_joint <- parameterDrawSummary(joint_sse)
+  dep <- attr(s_joint, "jointDependence")
+
+  expect_true(is.data.frame(dep))
+  expect_equal(nrow(dep), 1L)
+  expect_setequal(
+    c(dep$parameter1, dep$parameter2),
+    c("tka", "omega(eta.ka,eta.ka)")
+  )
+  expect_true(is.finite(dep$correlation))
+  expect_true(dep$correlation >= -1 && dep$correlation <= 1)
+
+  # covarianceDraw = "independent_iw" draws THETA and OMEGA independently, so
+  # there is no joint dependence structure to report at all -- the attribute
+  # is absent, not an empty/NA table.
+  iw_sse <- fake_draw_sse_object(mode = "independent_iw", omega = 0.6, se = 0.3,
+                                 n = 300L, seed = 72L)
+  s_iw <- parameterDrawSummary(iw_sse)
+  expect_null(attr(s_iw, "jointDependence"))
 })
 
 test_that("parameterDrawSummary refuses a non-covariance-mode run", {

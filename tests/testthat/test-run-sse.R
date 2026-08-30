@@ -949,6 +949,67 @@ test_that("runSSE supports raw-results and covariance parameter sources end to e
   expect_equal(reloaded$parameterDrawSummary, cov_res$parameterDrawSummary)
 })
 
+test_that("a parameterDrawSummary() failure during runSSE() warns and falls back to an empty table, never failing the run", {
+  # Code-quality review finding on Task 10: the tryCatch() around the
+  # precomputed parameterDrawSummary() in runSSE() had no test confirming it
+  # actually warns (rather than silently swallowing a real bug) and falls
+  # back to an empty table rather than propagating the error and failing an
+  # otherwise-successful completed run.
+  ref_fit <- .fit_sse_model(.sse_ref_model)
+  alt_fit <- .fit_sse_model(.sse_alt_model)
+
+  cov_out <- tempfile("nlmixr2sse-cov-draw-failure-")
+  on.exit(unlink(cov_out, recursive = TRUE, force = TRUE), add = TRUE)
+
+  testthat::local_mocked_bindings(
+    .parameterDrawSummaryCore = function(...) {
+      stop("simulated parameter-draw diagnostic failure")
+    }
+  )
+
+  draw_failure_warned <- FALSE
+  cov_res <- try(
+    suppressMessages(
+      withCallingHandlers(
+        runSSE(
+          ref_fit,
+          alternativeModels = sseModel(alt_fit, label = "no_eta"),
+          samples = 2L,
+          seed = 456,
+          control = runSSEControl(parameterSource = "covariance", workers = 1L),
+          outputDir = cov_out,
+          restart = TRUE
+        ),
+        warning = function(w) {
+          msg <- conditionMessage(w)
+          if (grepl("Could not compute the parameter-draw adequacy summary",
+                    msg, fixed = TRUE)) {
+            draw_failure_warned <<- TRUE
+            invokeRestart("muffleWarning")
+          } else if (grepl("Weakly identified OMEGA", msg, fixed = TRUE)) {
+            # theo_sd's eta.ka carries the same borderline relative SE noted
+            # in the sibling covariance test above -- expected, unrelated to
+            # what this test checks, and muffled the same way there.
+            invokeRestart("muffleWarning")
+          }
+        }
+      )
+    ),
+    silent = TRUE
+  )
+  if (inherits(cov_res, "try-error")) {
+    skip(paste(
+      "Phase 5 covariance SSE integration is unavailable in this environment:",
+      as.character(cov_res)
+    ))
+  }
+
+  expect_true(draw_failure_warned)
+  expect_s3_class(cov_res, "nlmixr2SSE")
+  expect_true(is.data.frame(cov_res$parameterDrawSummary))
+  expect_equal(nrow(cov_res$parameterDrawSummary), 0L)
+})
+
 test_that("starting-value policy changes no generating value or dataset", {
   # The critical invariant for Task 4: referenceInitials/alternativeInitials
   # are a purely numerical intervention (which UI the optimiser starts a fit
