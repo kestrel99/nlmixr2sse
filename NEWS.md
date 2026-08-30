@@ -1,5 +1,18 @@
 # nlmixr2sse 0.1
 
+* New `validateSSEPpeScaling()`: checks the proportional-noncentrality
+  assumption that PsN-style parametric power estimation relies on when
+  extrapolating power to unstudied sample sizes. Fits the same power
+  comparison across two or more completed SSE runs that differ only in study
+  size, reports the fitted noncentrality-per-subject ratio for each, and
+  warns when that ratio spreads over more than a tolerance (default 25%) of
+  its mean -- evidence the noncentrality does not scale linearly with study
+  size over the range tested. With three or more runs, also reports a
+  through-origin lack-of-fit statistic. Restricted to power comparisons
+  (Type-I comparisons have no noncentrality to scale) and refuses to pool
+  runs whose resolved comparisons disagree (differing `df` or model labels)
+  rather than silently averaging across them.
+
 * New `plotSSEPpeDiagnostics()`: a distribution-adequacy diagnostic for the
   `distribution_mle` noncentral chi-square fit that `ppeSummary()`/
   `plotSSEPpePower()` rest on. Computes a Cramer-von Mises discrepancy

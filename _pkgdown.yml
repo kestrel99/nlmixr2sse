@@ -19,6 +19,7 @@ reference:
   - ppeSummary
   - plotSSEPpePower
   - plotSSEPpeDiagnostics
+  - validateSSEPpeScaling
 
 - title: Plotting
   desc: Diagnostic and summary plots for SSE runs.
