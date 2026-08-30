@@ -1,5 +1,17 @@
 # nlmixr2sse 0.1
 
+* Parameter summary: added `mcse_bias`/`ci_bias_lower`/`ci_bias_upper` and
+  `mcse_relative_bias`/`ci_relative_bias_lower`/`ci_relative_bias_upper`
+  (Monte Carlo standard errors of the bias, on the absolute and relative
+  scale, with normal-approximation 95% CIs), plus `n_effective`/
+  `n_effective_relative` reporting how many replicates fed each. Supersedes
+  `rse`, which is retained as an alias of `mcse_relative_bias` for one
+  release: the old `rse` formula divided a nonnegative SD directly by the
+  (possibly negative) fixed truth, so it could come out negative for a
+  negative truth -- `mcse_relative_bias` is always >= 0 by construction. `rse`
+  is a table field, not a function argument, so `lifecycle` cannot warn when
+  it is read; this notice is the only deprecation signal it gets.
+
 * New `validateSSEPpeScaling()`: checks the proportional-noncentrality
   assumption that PsN-style parametric power estimation relies on when
   extrapolating power to unstudied sample sizes. Fits the same power

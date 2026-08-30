@@ -1790,7 +1790,17 @@
   "bias",
   "relative_bias",
   "relative_absolute_bias",
+  # `rse` is retained as a superseded alias of `mcse_relative_bias` (same
+  # nonnegative-corrected value) for one release; see `.parameterSummaryRow()`.
   "rse",
+  "mcse_bias",
+  "ci_bias_lower",
+  "ci_bias_upper",
+  "mcse_relative_bias",
+  "ci_relative_bias_lower",
+  "ci_relative_bias_upper",
+  "n_effective",
+  "n_effective_relative",
   "ci_0.5",
   "ci_2.5",
   "ci_5",
@@ -1855,6 +1865,77 @@
     s^(-4) *
     sum((x - m)^4) -
     3 * (n - 1L)^2 / ((n - 2L) * (n - 3L))
+}
+
+# The Monte Carlo standard error of a mean of replicate-level errors: the
+# usual SE of the mean, sqrt(Var/n), estimated from the replicates
+# themselves. Always >= 0 by construction (an SD), unlike the superseded
+# `rse` formula it replaces, which divided by the (possibly negative) truth
+# directly and so could come out negative for a negative fixed truth.
+.mcseFromErrors <- function(errors) {
+  errors <- errors[is.finite(errors)]
+  n <- length(errors)
+  if (n < 2L) {
+    return(NA_real_)
+  }
+  stats::sd(errors) / sqrt(n)
+}
+
+# One replicate set's bias-family statistics against a single fixed truth:
+# the Monte Carlo standard error of the bias (on both the absolute and
+# relative scale) and a normal-approximation 95% CI around each. Finite-error
+# filtering happens once here (via .mcseFromErrors() and the matching mean),
+# so `n_effective`/`n_effective_relative` always describe exactly the
+# replicates that fed the returned MCSE and CI -- not `length(estimates)`,
+# which may include values that later turned out non-finite once combined
+# with `truth`.
+#
+# `truth` is a single scalar: this is the value the pair check upstream
+# (`.singleParameterSummary()`) has already confirmed is constant across the
+# replicate set. A zero or non-finite truth makes "relative" error undefined,
+# so the relative fields come back NA with n_effective_relative = 0L rather
+# than divide by zero or propagate Inf/NaN silently.
+.parameterSummaryRow <- function(estimates, truth) {
+  z95 <- stats::qnorm(0.975)
+  ci_around <- function(center, mcse, n) {
+    if (n >= 2L && is.finite(mcse) && mcse > 0) {
+      c(center - z95 * mcse, center + z95 * mcse)
+    } else {
+      c(NA_real_, NA_real_)
+    }
+  }
+
+  errors <- estimates - truth
+  finite_errors <- errors[is.finite(errors)]
+  n_effective <- length(finite_errors)
+  bias <- if (n_effective > 0L) mean(finite_errors) else NA_real_
+  mcse_bias <- .mcseFromErrors(errors)
+  bias_ci <- ci_around(bias, mcse_bias, n_effective)
+
+  relative_ok <- is.finite(truth) && truth != 0
+  if (relative_ok) {
+    rel_errors <- errors / truth
+    finite_rel_errors <- rel_errors[is.finite(rel_errors)]
+    n_effective_relative <- length(finite_rel_errors)
+    relative_bias <- if (n_effective_relative > 0L) mean(finite_rel_errors) else NA_real_
+    mcse_relative_bias <- .mcseFromErrors(rel_errors)
+  } else {
+    n_effective_relative <- 0L
+    relative_bias <- NA_real_
+    mcse_relative_bias <- NA_real_
+  }
+  relative_ci <- ci_around(relative_bias, mcse_relative_bias, n_effective_relative)
+
+  list(
+    mcse_bias = mcse_bias,
+    ci_bias_lower = bias_ci[[1L]],
+    ci_bias_upper = bias_ci[[2L]],
+    mcse_relative_bias = mcse_relative_bias,
+    ci_relative_bias_lower = relative_ci[[1L]],
+    ci_relative_bias_upper = relative_ci[[2L]],
+    n_effective = n_effective,
+    n_effective_relative = n_effective_relative
+  )
 }
 
 .singleParameterSummary <- function(estimates, truth, matched) {
@@ -1923,15 +2004,40 @@
     pair_n > 0L && all(!is.na(true_pair)) && length(unique(true_pair)) == 1L
   ) {
     true0 <- true_pair[[1L]]
-    if (is.finite(true0) && true0 != 0) {
-      stats["rse"] <- 100 * .safeSd(est_pair) / (true0 * sqrt(pair_n))
-      ns["rse"] <- pair_n
-      if (is.finite(stats["relative_bias"]) && is.finite(stats["rse"])) {
-        for (nm in names(.ciProbMap)) {
-          stats[[nm]] <- stats["relative_bias"] +
-            stats["rse"] * stats::qnorm(.ciProbMap[[nm]])
-          ns[[nm]] <- pair_n
-        }
+    row <- .parameterSummaryRow(est_pair, true0)
+
+    # Absolute scale (raw units, matching `bias`): valid regardless of
+    # whether true0 is zero, unlike the relative-scale fields below.
+    stats["mcse_bias"] <- row$mcse_bias
+    stats["ci_bias_lower"] <- row$ci_bias_lower
+    stats["ci_bias_upper"] <- row$ci_bias_upper
+    ns[c("mcse_bias", "ci_bias_lower", "ci_bias_upper")] <- row$n_effective
+    stats["n_effective"] <- row$n_effective
+    ns["n_effective"] <- row$n_effective
+
+    # Relative scale, on the same 0-100 percentage convention as
+    # `relative_bias`/`relative_rmse` above -- .parameterSummaryRow() itself
+    # returns fractional (not percentage) values.
+    pct_mcse_relative_bias <- 100 * row$mcse_relative_bias
+    stats["mcse_relative_bias"] <- pct_mcse_relative_bias
+    stats["ci_relative_bias_lower"] <- 100 * row$ci_relative_bias_lower
+    stats["ci_relative_bias_upper"] <- 100 * row$ci_relative_bias_upper
+    ns[c(
+      "mcse_relative_bias", "ci_relative_bias_lower", "ci_relative_bias_upper"
+    )] <- row$n_effective_relative
+    stats["n_effective_relative"] <- row$n_effective_relative
+    ns["n_effective_relative"] <- row$n_effective_relative
+
+    # `rse` is a superseded alias: same value as `mcse_relative_bias`, kept
+    # under its old name for one release (see .parameterStatsOrder).
+    stats["rse"] <- pct_mcse_relative_bias
+    ns["rse"] <- row$n_effective_relative
+
+    if (is.finite(stats["relative_bias"]) && is.finite(pct_mcse_relative_bias)) {
+      for (nm in names(.ciProbMap)) {
+        stats[[nm]] <- stats["relative_bias"] +
+          pct_mcse_relative_bias * stats::qnorm(.ciProbMap[[nm]])
+        ns[[nm]] <- row$n_effective_relative
       }
     }
   }
