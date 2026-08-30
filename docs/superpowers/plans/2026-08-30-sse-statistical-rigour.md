@@ -1608,6 +1608,58 @@ than simultaneous. Attach the diagnostic table:
 Diagnostics are evidence about approximation adequacy, not a pass/fail
 certification; the documentation must say so.
 
+**The diagnosed value must appear in the diagnostic's own output.** A first
+implementation's `"ppeDiagnostics"` attribute reported only `comparison$df`,
+the DECLARED/nominal value. For a power comparison that is fine, since df is
+genuinely fixed there. For a Type-I comparison it is the wrong number: df is
+the ESTIMATED quantity, and the value the CvM statistic and p-value actually
+describe is `fit$estimate`, not the declared df. Demonstrated concretely: with
+a true df of 1, the fitted df came out 1.0074, but the attribute reported `df =
+1` with no way to recover 1.0074 from the output at all. A diagnostic whose own
+diagnosed value is invisible in its own table defeats the point of shipping it.
+`ppeSummary()` already solves this with a separate `estimate`/`parameter` pair
+alongside its nominal `df` column — mirror that shape here rather than renaming
+`df`, so a `df` column stays comparable across power and Type-I rows:
+
+```r
+  attr(p, "ppeDiagnostics") <- data.frame(
+    comparison = cmp$label, parameter = fit$parameter, estimate = fit$estimate,
+    cvm = cvm, p_value = p_value,
+    n = fit$n, n_nonpositive = fit$nNonPositive,
+    df = comparison$df %||% NA_real_, df_source = comparison$dfSource,
+    stringsAsFactors = FALSE
+  )
+```
+
+**Test the multi-comparison facet path for real.** A first implementation's
+"multiple comparisons" test called `plotSSEPpeDiagnostics()` twice, once per
+single comparison, and `rbind()`-ed the two attribute tables together
+afterward — it never actually passed a list of length > 1 to the function, so
+the `facet_wrap()` branch (`length(cmps) > 1`) had zero test coverage. The
+underlying facet code was verified correct by construction (two comparisons
+with different df produce panel-specific, non-cross-contaminating curves), but
+the test suite would not have caught a regression there. Write a genuine
+multi-comparison call — `plotSSEPpeDiagnostics(x, comparisons = list(cmp1,
+cmp2), ...)` — matching the established pattern already used for
+`plotSSEPpePower()`'s own multi-comparison tests, and confirm both the returned
+attribute AND the actual facet panels are comparison-specific (e.g. via
+`ggplot2::ggplot_build()`, not just row count).
+
+Add an RNG-isolation test for `.ppeEnvelopeBounds()`, mirroring the existing
+test for `.ppeParametricBootstrap()` — the envelope bootstrap was verified by
+hand not to leak into the caller's `.Random.seed`, but nothing regression-tests
+that.
+
+**Not required this task, noted for later:** `bootstrapSamples` is shared
+between the p-value's refit loop (expensive — real `optim()` calls per
+replicate) and the ECDF envelope's draw-only loop (cheap), so there is no way
+to skip one while keeping the other. Measured at n=1000: the p-value loop alone
+takes ~12s at the default 1000 replicates. This is honestly documented in the
+roxygen rather than hidden, and `bootstrapSamples = 0` already degrades both
+gracefully (point `cvm` still returned, `p_value` and envelope bounds `NA`).
+Splitting into separate `bootstrapSamples`/`envelopeSamples` arguments is a
+real API improvement but not required to ship this task; leave as a follow-up.
+
 - [ ] **Step 7: Run and commit**
 
 ```bash
