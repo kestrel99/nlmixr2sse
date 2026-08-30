@@ -692,7 +692,18 @@ Expected: FAIL, `could not find function "comparisonSummary"`.
 .ofvByLabel <- function(x) {
   row_mask <- .summaryMask(x$rawResults, outFilter = x$runInfo$control$outFilter %||% NULL)
   filtered <- x$rawResults[row_mask, , drop = FALSE]
-  samples <- sort(unique(x$rawResults$sample[x$rawResults$sample > 0L]))
+  # Anchor on the DECLARED replicate set, not on whatever reached rawResults.
+  # A replicate where both models failed before writing any row would otherwise
+  # vanish from n_attempted, n_paired_evaluable and n_excluded alike, so no
+  # count would record that it ever existed -- the exact blind spot this
+  # module's paired-denominator design exists to eliminate.
+  observed <- sort(unique(x$rawResults$sample[x$rawResults$sample > 0L]))
+  declared <- x$runInfo$samples
+  samples <- if (!is.null(declared) && length(declared) == 1L && is.finite(declared)) {
+    sort(union(seq_len(as.integer(declared)), observed))
+  } else {
+    observed
+  }
   labels <- .knownModelLabels(x)
   ofv <- lapply(labels, function(label) {
     rows <- filtered$sample > 0L & filtered$model_label == label
@@ -736,8 +747,11 @@ comparisonSummary <- function(x, comparisons = NULL, models = NULL,
     prob <- n_exceeding / n_paired
     fraction <- n_paired / length(full)
     if (fraction < minPairedFraction) {
+      # Raw counts, not just a rounded percentage: round(100 * 1/200) is 0, so a
+      # percentage alone can report "0%" when replicates do remain, and "100%"
+      # when some were excluded -- the opposite of what this warning is for.
       cli::cli_warn(c(
-        "!" = "Only {round(100 * fraction)}% of replicates are paired evaluable for {.val {cmp$label}}.",
+        "!" = "Only {n_paired} of {length(full)} replicates are paired evaluable for {.val {cmp$label}}.",
         "i" = "Failed fits are excluded, not imputed; operating characteristics may be biased."
       ))
     }
@@ -1926,9 +1940,27 @@ Rscript -e 'devtools::check()'
 
 Expected: `FAIL 0`; `R CMD check` reports 0 errors and 0 warnings.
 
-CI runs `rcmdcheck(error_on = "warning")`, so any warning fails the build. Check
-for unstated test dependencies specifically: a bare `::` into a package that is
-in neither `Imports` nor `Suggests` produces
+**`R CMD check` is not clean today.** Measured on a clean `git archive` of the
+tree at Task 3, so these are pre-existing and must be cleared here rather than
+discovered at the end:
+
+| Finding | Severity | Fix |
+| --- | --- | --- |
+| `plot-nlmixr2SSE.Rd` documents an argument `object` that is absent from `\usage` | **WARNING** | Reconcile the roxygen block against the actual formals, then re-document. This alone fails a `error_on = "warning"` gate. |
+| `Namespace in Imports field not imported from: 'tidyr'` | NOTE | Either use it or drop it from `DESCRIPTION`. |
+| `no visible binding for global variable` for `delta_ofv`, `model_label`, `value`, `role`, `estimate` | NOTE | Standard ggplot2 non-standard-evaluation artefact. Declare them via `utils::globalVariables()` in a package-level file. Tasks 7 and 10 add plots and will add more names — collect them all here. |
+
+Two further vignette WARNINGs (`Files in the 'vignettes' directory but no files
+in 'inst/doc'`) appear only when checking with `--no-build-vignettes`; they are
+an artefact of that flag, not a real defect. Run the final check WITHOUT it.
+
+Note also, because it is a natural false alarm: `stats::` and `utils::` are used
+throughout `R/` without appearing in `DESCRIPTION`, and that is fine. `R CMD
+check` does not require base-priority packages to be declared, and it does not
+flag them. Do not "fix" this.
+
+For test dependencies the rule is different: a bare `::` into a package in
+neither `Imports` nor `Suggests` produces
 `checking for unstated dependencies in 'tests' ... WARNING`. Either declare the
 package or use base R instead.
 
