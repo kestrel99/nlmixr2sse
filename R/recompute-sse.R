@@ -156,14 +156,24 @@
     existingRunInfo$referenceInitials %||% legacy_initials$referenceInitials
   if (!identical(recorded_reference_initials, control$referenceInitials)) {
     .abortSSE(
-      "Existing run directory used {.arg referenceInitials = {recorded_reference_initials}}, not {.arg referenceInitials = {control$referenceInitials}}."
+      paste0(
+        "Existing run directory used {.arg referenceInitials = {recorded_reference_initials}}, ",
+        "but this run requests {.arg referenceInitials = {control$referenceInitials}}. ",
+        "Starting-value policy changes which fits converge, so the replicates would not be comparable. ",
+        "Use {.code runSSEControl(referenceInitials = \"{recorded_reference_initials}\")} to resume, or {.code restart = TRUE} for a fresh run."
+      )
     )
   }
   recorded_alternative_initials <-
     existingRunInfo$alternativeInitials %||% legacy_initials$alternativeInitials
   if (!identical(recorded_alternative_initials, control$alternativeInitials)) {
     .abortSSE(
-      "Existing run directory used {.arg alternativeInitials = {recorded_alternative_initials}}, not {.arg alternativeInitials = {control$alternativeInitials}}."
+      paste0(
+        "Existing run directory used {.arg alternativeInitials = {recorded_alternative_initials}}, ",
+        "but this run requests {.arg alternativeInitials = {control$alternativeInitials}}. ",
+        "Starting-value policy changes which fits converge, so the replicates would not be comparable. ",
+        "Use {.code runSSEControl(alternativeInitials = \"{recorded_alternative_initials}\")} to resume, or {.code restart = TRUE} for a fresh run."
+      )
     )
   }
 

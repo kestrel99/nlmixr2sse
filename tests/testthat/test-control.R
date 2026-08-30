@@ -103,6 +103,19 @@ test_that("the old and new arguments cannot contradict each other", {
                                    referenceInitials = "model")),
     "contradict"
   )
+
+  # Symmetric case: the referenceInitials and alternativeInitials
+  # contradiction checks are separate, near-identical `if` blocks in
+  # runSSEControl() (R/sse-control.R), so a future edit could break the
+  # alternativeInitials branch without this failing.
+  expect_error(
+    suppressWarnings(runSSEControl(
+      parameterSource = "rawres",
+      randomEstimationInits = FALSE,
+      alternativeInitials = "simulation"
+    )),
+    "contradict"
+  )
 })
 
 test_that("simulation-start initials warn (not error) outside rawres mode", {

@@ -21,7 +21,7 @@ Imports:
     checkmate,
     cli (>= 3.4.0),
     ggplot2,
-    lifecycle,
+    lifecycle (>= 1.0.0),
     lotri,
     nlme,
     nlmixr2est,

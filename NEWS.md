@@ -1,5 +1,18 @@
 # nlmixr2sse 0.1
 
+* `runSSEControl(randomEstimationInits = )` is soft-deprecated in favor of
+  `referenceInitials`/`alternativeInitials`, which split the same
+  starting-value policy by model role: `referenceInitials` controls the
+  simulation (reference) model refit, `alternativeInitials` controls
+  alternative-model refits, so a reference-only or alternative-only
+  sensitivity study is now possible. `randomEstimationInits = TRUE`/`FALSE`
+  keeps working (with a deprecation warning) and maps to
+  `referenceInitials`/`alternativeInitials` `"simulation"`/`"model"` for both
+  roles. Setting either new argument to `"simulation"` now warns, rather than
+  silently doing nothing, when `parameterSource` is not `"rawres"` -- the only
+  mode the setting currently affects. A resumed run aborts if its recorded
+  `referenceInitials`/`alternativeInitials` do not match the current call,
+  the same way a `parameterSource` or `rxThreads` mismatch does.
 * `parameterSource = "covariance"` now draws OMEGA as well as THETA. Recent
   `nlmixr2est` reports a joint fixed/random-effect covariance in `fit$cov`
   (OMEGA entries named `om.<eta>` / `cov.<eta>.<eta>`), which previously made
