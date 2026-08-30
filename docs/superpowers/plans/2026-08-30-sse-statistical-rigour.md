@@ -905,7 +905,40 @@ test_that("starting-value policy changes no generating value or dataset", {
 
 Add `run_info$referenceInitials` and `run_info$alternativeInitials`, and extend
 `.validateResumeRequest()` to abort on a mismatch, mirroring the existing
-`rxThreads` check.
+`rxThreads` check. Legacy directories recording only `randomEstimationInits`
+resolve unambiguously to both roles, so unlike an unknown historical thread
+count they are mapped rather than warned about.
+
+`parameterSourceInfo$estimationInitialValues` must distinguish an asymmetric
+policy. Collapsing it to "both roles use simulation starts" makes a run where
+only the reference does read identically to one where neither does — the run
+record then fails to state the choice actually made.
+
+- [ ] **Step 7: Warn when a role policy cannot take effect**
+
+`"simulation"` starts only differ from stored starts in `"rawres"` mode, but
+silence is the wrong response to an explicitly-set option. Every other
+mode-gated argument in `runSSEControl()` tracks `missing()` so an
+explicitly-set-but-inapplicable value is never swallowed; these must too.
+
+The two non-rawres modes are not alike, and the message must not pretend they
+are. Under `"fixed"` a single generating vector is resolved once and reused, so
+simulation starts are genuinely identical to model starts. Under `"covariance"`
+each replicate draws a different vector, so simulation starts *would* differ —
+the behaviour is unimplemented, not inert, and saying otherwise is misleading.
+
+```r
+  if (identical(referenceInitials, "simulation") && parameterSource != "rawres") {
+    cli::cli_warn(c(
+      "!" = "{.arg referenceInitials = \"simulation\"} has no effect unless {.arg parameterSource = \"rawres\"}.",
+      "i" = "Under {.val fixed} every replicate shares one generating vector, so the two policies coincide.",
+      "i" = "Under {.val covariance} the vectors differ per replicate, but simulation starts are not yet wired up."
+    ))
+  }
+```
+
+Do the same for `alternativeInitials`. A hard error is ruled out: it would break
+the legitimate case of setting one role while the other stays at its default.
 
 - [ ] **Step 7: Run the full suite and commit**
 
