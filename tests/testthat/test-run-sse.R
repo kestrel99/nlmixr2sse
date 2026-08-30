@@ -847,6 +847,10 @@ test_that("runSSE supports raw-results and covariance parameter sources end to e
     rawres_res$runInfo$parameterSourceInfo$sourceSamples,
     c(1L, 2L)
   )
+  # randomEstimationInits = TRUE above maps both roles to "simulation", so
+  # this is the symmetric "rawres" branch of .estimationInitialValuesLabel();
+  # the asymmetric "mixed" branch is unit-tested directly, since it needs no
+  # end-to-end run to exercise.
   expect_equal(
     rawres_res$runInfo$parameterSourceInfo$estimationInitialValues,
     "rawres"
@@ -1236,6 +1240,34 @@ test_that("legacyInitialsPolicy resolves recorded and legacy control objects", {
     nlmixr2sse:::.legacyInitialsPolicy(list()),
     list(referenceInitials = "model", alternativeInitials = "model")
   )
+})
+
+test_that("estimationInitialValuesLabel distinguishes an asymmetric policy from both symmetric ones", {
+  # Task 4 made the starting-value policy role-specific. Collapsing it back
+  # to a single value must not make "reference uses simulation starts, the
+  # alternative does not" indistinguishable from "neither does" -- the whole
+  # point of the per-role split is that this choice is now representable.
+  both_model <- list(referenceInitials = "model", alternativeInitials = "model")
+  both_sim <- list(referenceInitials = "simulation", alternativeInitials = "simulation")
+  ref_only <- list(referenceInitials = "simulation", alternativeInitials = "model")
+  alt_only <- list(referenceInitials = "model", alternativeInitials = "simulation")
+
+  expect_equal(
+    nlmixr2sse:::.estimationInitialValuesLabel(both_model),
+    "reference_fit"
+  )
+  expect_equal(nlmixr2sse:::.estimationInitialValuesLabel(both_sim), "rawres")
+  expect_equal(nlmixr2sse:::.estimationInitialValuesLabel(ref_only), "mixed")
+  expect_equal(nlmixr2sse:::.estimationInitialValuesLabel(alt_only), "mixed")
+
+  # All three labels must be pairwise distinct, or the field would still fail
+  # to state the choice actually made.
+  labels <- vapply(
+    list(both_model, both_sim, ref_only),
+    nlmixr2sse:::.estimationInitialValuesLabel,
+    character(1)
+  )
+  expect_equal(length(unique(labels)), 3L)
 })
 
 test_that("addModels warns when rxThreads differs from the recorded run", {

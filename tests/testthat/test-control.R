@@ -64,7 +64,13 @@ test_that("runSSEControl enforces staged-availability and combination rules", {
 })
 
 test_that("initials are settable per model role", {
-  ctl <- runSSEControl(referenceInitials = "simulation", alternativeInitials = "model")
+  # parameterSource = "rawres" avoids the "simulation has no effect" warning
+  # covered separately below -- this test is only about the values sticking.
+  ctl <- runSSEControl(
+    parameterSource = "rawres",
+    referenceInitials = "simulation",
+    alternativeInitials = "model"
+  )
 
   expect_equal(ctl$referenceInitials, "simulation")
   expect_equal(ctl$alternativeInitials, "model")
@@ -99,19 +105,67 @@ test_that("the old and new arguments cannot contradict each other", {
   )
 })
 
-test_that("simulation-start initials are a silent no-op outside rawres mode", {
-  # Unlike the deprecated randomEstimationInits, referenceInitials /
-  # alternativeInitials = "simulation" does not require parameterSource =
-  # "rawres": every other mode still resolves a real generating vector (just
-  # the same one for every replicate), so the setting is merely inert there,
-  # not nonsensical -- and .fitTaskRecord() only applies it under "rawres".
-  ctl <- runSSEControl(
-    parameterSource = "fixed",
-    referenceInitials = "simulation",
-    alternativeInitials = "simulation"
+test_that("simulation-start initials warn (not error) outside rawres mode", {
+  # Unlike the deprecated randomEstimationInits (a hard error),
+  # referenceInitials / alternativeInitials = "simulation" outside "rawres"
+  # warns: setting one role while the other keeps its default "model" is
+  # legitimate, so it cannot be a hard error -- but every other mode-gated
+  # argument in this function (updateFix, inFilter, covarianceDraw,
+  # omegaRseWarn) never silently swallows an explicitly-set-but-inapplicable
+  # option, so it cannot be silent either.
+  # Each argument warns independently -- setting both at once (as here)
+  # legitimately fires two warnings, so each expect_warning() below sets only
+  # one to "simulation" at a time and leaves the other at its silent "model"
+  # default; suppressWarnings() then covers the combined case explicitly, to
+  # confirm both warnings fire together without leaking an uncaught one into
+  # the suite's WARN count.
+  expect_warning(
+    ctl_ref <- runSSEControl(
+      parameterSource = "fixed",
+      referenceInitials = "simulation"
+    ),
+    "no effect"
   )
-  expect_equal(ctl$referenceInitials, "simulation")
-  expect_equal(ctl$alternativeInitials, "simulation")
+  expect_equal(ctl_ref$referenceInitials, "simulation")
+
+  expect_warning(
+    ctl_alt <- runSSEControl(
+      parameterSource = "fixed",
+      alternativeInitials = "simulation"
+    ),
+    "no effect"
+  )
+  expect_equal(ctl_alt$alternativeInitials, "simulation")
+
+  warnings_both <- testthat::capture_warnings(
+    ctl_fixed <- runSSEControl(
+      parameterSource = "fixed",
+      referenceInitials = "simulation",
+      alternativeInitials = "simulation"
+    )
+  )
+  expect_equal(length(warnings_both), 2L)
+  expect_match(warnings_both[[1L]], "referenceInitials")
+  expect_match(warnings_both[[2L]], "alternativeInitials")
+  expect_equal(ctl_fixed$referenceInitials, "simulation")
+  expect_equal(ctl_fixed$alternativeInitials, "simulation")
+
+  # Covariance mode gets the same warning, but for a different underlying
+  # reason (per-replicate vectors differ there, but simulation starts are
+  # not wired up for it).
+  expect_warning(
+    runSSEControl(
+      parameterSource = "covariance",
+      referenceInitials = "simulation"
+    ),
+    "no effect"
+  )
+
+  # A default "model" policy must never warn.
+  expect_silent(runSSEControl(parameterSource = "fixed"))
+  expect_silent(
+    runSSEControl(parameterSource = "fixed", referenceInitials = "model")
+  )
 })
 
 test_that("runSSEControl validates raw-results filters", {

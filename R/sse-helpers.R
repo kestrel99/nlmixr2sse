@@ -173,6 +173,24 @@
   list(referenceInitials = mapped, alternativeInitials = mapped)
 }
 
+# Summarizes the per-role starting-value policy as a single label for
+# parameterSourceInfo. Task 4 made the policy role-specific, so a run where
+# only one role starts from the generating vector must be distinguishable
+# from a run where both do or neither does -- collapsing that to a
+# both-or-neither boolean would make an asymmetric policy indistinguishable
+# from a fully "reference_fit" run in the saved record.
+.estimationInitialValuesLabel <- function(control) {
+  ref_sim <- identical(control$referenceInitials, "simulation")
+  alt_sim <- identical(control$alternativeInitials, "simulation")
+  if (ref_sim && alt_sim) {
+    "rawres"
+  } else if (!ref_sim && !alt_sim) {
+    "reference_fit"
+  } else {
+    "mixed"
+  }
+}
+
 .emptyReferenceValues <- function() {
   data.frame(
     parameter = character(0),
@@ -817,17 +835,11 @@
       offsetRawres = control$offsetRawres,
       inFilter = control$inFilter,
       sourceSamples = vapply(records, `[[`, integer(1), "sourceSample"),
-      # Historically a single run-wide flag; now role-specific. Report
-      # "rawres" only when every role starts from the generating vector, to
-      # keep this summary field meaningful as a single value.
-      estimationInitialValues = if (
-        identical(control$referenceInitials, "simulation") &&
-          identical(control$alternativeInitials, "simulation")
-      ) {
-        "rawres"
-      } else {
-        "reference_fit"
-      },
+      # Historically a single run-wide flag; now role-specific, so an
+      # asymmetric policy (one role uses simulation starts, the other does
+      # not) is reported as "mixed" rather than collapsed into
+      # "reference_fit" -- see .estimationInitialValuesLabel().
+      estimationInitialValues = .estimationInitialValuesLabel(control),
       updateFixedValues = isTRUE(control$updateFix)
     )
   )

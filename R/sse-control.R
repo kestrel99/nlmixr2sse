@@ -41,12 +41,18 @@
 #'   a numerical intervention only: it changes optimiser starting values, not
 #'   the simulated data. It only has an effect when
 #'   `parameterSource = "rawres"` -- the same restriction the deprecated
-#'   `randomEstimationInits` enforced as a hard error. Under `"fixed"` or
-#'   `"covariance"` it is instead a silent no-op, matching this package's
-#'   existing "simulation" starts implementation, which is wired up only for
-#'   `"rawres"`. Splitting the setting by role lets a reference-only or
-#'   alternative-only sensitivity study be run without touching the other
-#'   role's starts.
+#'   `randomEstimationInits` enforced as a hard error; setting either argument
+#'   to `"simulation"` under another mode instead warns (not errors, since
+#'   setting one role while the other keeps its default is legitimate). The
+#'   two other modes are inert for different reasons: under `"fixed"` every
+#'   replicate shares one generating vector, so simulation and model starts
+#'   are byte-identical -- a genuine no-op. Under `"covariance"` each
+#'   replicate draws a genuinely different vector, so a simulation start
+#'   *would* differ from a model start, but `.fitTaskRecord()` only ever
+#'   applies "simulation" starts when `parameterSource` is `"rawres"` -- this
+#'   is unimplemented, not inert. Splitting the setting by role lets a
+#'   reference-only or alternative-only sensitivity study be run without
+#'   touching the other role's starts.
 #' @param randomEstimationInits Deprecated. Use `referenceInitials` and
 #'   `alternativeInitials` instead. `TRUE` maps to
 #'   `referenceInitials = "simulation"` and `alternativeInitials =
@@ -221,6 +227,27 @@ runSSEControl <- function(
     }
     referenceInitials <- mapped
     alternativeInitials <- mapped
+  }
+
+  # Unlike the deprecated flag, an explicit "simulation" outside "rawres"
+  # mode warns rather than errors -- setting one role while the other keeps
+  # its default "model" is legitimate, so this cannot be a hard error. But
+  # every other mode-gated argument in this function (updateFix, inFilter,
+  # covarianceDraw, omegaRseWarn) never silently swallows an
+  # explicitly-set-but-inapplicable option, so this cannot be silent either.
+  if (identical(referenceInitials, "simulation") && parameterSource != "rawres") {
+    cli::cli_warn(c(
+      "!" = "{.arg referenceInitials = \"simulation\"} has no effect unless {.arg parameterSource = \"rawres\"}.",
+      "i" = "Under {.val fixed} every replicate shares one generating vector, so the two policies coincide.",
+      "i" = "Under {.val covariance} the vectors differ per replicate, but simulation starts are not yet wired up."
+    ))
+  }
+  if (identical(alternativeInitials, "simulation") && parameterSource != "rawres") {
+    cli::cli_warn(c(
+      "!" = "{.arg alternativeInitials = \"simulation\"} has no effect unless {.arg parameterSource = \"rawres\"}.",
+      "i" = "Under {.val fixed} every replicate shares one generating vector, so the two policies coincide.",
+      "i" = "Under {.val covariance} the vectors differ per replicate, but simulation starts are not yet wired up."
+    ))
   }
 
   if (isTRUE(updateFix) && parameterSource != "rawres") {

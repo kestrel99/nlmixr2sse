@@ -73,12 +73,18 @@ starts a fit from that replicate's generating parameter vector instead --
 a numerical intervention only: it changes optimiser starting values, not
 the simulated data. It only has an effect when
 \code{parameterSource = "rawres"} -- the same restriction the deprecated
-\code{randomEstimationInits} enforced as a hard error. Under \code{"fixed"} or
-\code{"covariance"} it is instead a silent no-op, matching this package's
-existing "simulation" starts implementation, which is wired up only for
-\code{"rawres"}. Splitting the setting by role lets a reference-only or
-alternative-only sensitivity study be run without touching the other
-role's starts.}
+\code{randomEstimationInits} enforced as a hard error; setting either argument
+to \code{"simulation"} under another mode instead warns (not errors, since
+setting one role while the other keeps its default is legitimate). The
+two other modes are inert for different reasons: under \code{"fixed"} every
+replicate shares one generating vector, so simulation and model starts
+are byte-identical -- a genuine no-op. Under \code{"covariance"} each
+replicate draws a genuinely different vector, so a simulation start
+\emph{would} differ from a model start, but \code{.fitTaskRecord()} only ever
+applies "simulation" starts when \code{parameterSource} is \code{"rawres"} -- this
+is unimplemented, not inert. Splitting the setting by role lets a
+reference-only or alternative-only sensitivity study be run without
+touching the other role's starts.}
 
 \item{randomEstimationInits}{Deprecated. Use \code{referenceInitials} and
 \code{alternativeInitials} instead. \code{TRUE} maps to
