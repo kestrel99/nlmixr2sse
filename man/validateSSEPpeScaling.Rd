@@ -38,8 +38,13 @@ with \code{subjects}, the fitted \code{lambda} (noncentrality estimate),
 its bootstrap \code{ci_lower}/\code{ci_upper}, and \code{lambda_per_subject}.}
 \item{lackOfFit}{The residual sum of squares from a through-origin fit
 of \code{lambda} on \code{subjects}, relative to the total sum of squares
-around the mean \code{lambda}. \code{NA} when fewer than 3 runs are supplied
-(a line always fits 2 points, so the statistic is uninformative).}
+around the mean \code{lambda}. Near 0 indicates a good through-origin fit
+(consistent with proportional scaling); values approaching or
+exceeding 1 indicate a poor one. \code{NA} when fewer than 3 runs are
+supplied (a line always fits 2 points, so the statistic is
+uninformative) or when every fitted \code{lambda} is identical (e.g. every
+run's estimate pinned at the same lower bound), leaving no variance
+for the ratio to describe.}
 \item{nonlinear}{\code{TRUE} when \code{lambda_per_subject} spreads over more
 than \code{tolerance} of its mean across runs.}
 \item{tolerance}{The tolerance used, echoed back for reference.}

@@ -12,6 +12,12 @@ test_that("proportional fixtures give a consistent lambda per subject", {
 
   expect_equal(v$table$lambda_per_subject, rep(0.25, 3), tolerance = 0.15)
   expect_false(v$nonlinear)
+  # A near-perfect through-origin fit: residual variance around the fitted
+  # line is small relative to the total variance in lambda across runs.
+  # Numerically verified at ~0.0002 for this fixture -- 0.05 leaves a wide
+  # margin while still catching a wrong lack-of-fit formula (e.g. a swapped
+  # numerator/denominator, which would push this well past 1).
+  expect_lt(v$lackOfFit, 0.05)
 })
 
 test_that("a deliberately nonlinear fixture is flagged", {
@@ -27,6 +33,10 @@ test_that("a deliberately nonlinear fixture is flagged", {
     "not proportional"
   )
   expect_true(v$nonlinear)
+  # A poor through-origin fit: numerically verified at ~1.78 for this
+  # fixture. 0.5 stays well below that while still well above the
+  # proportional fixture's ~0.0002, giving real separation between the two.
+  expect_gt(v$lackOfFit, 0.5)
 })
 
 test_that("two study sizes give only a descriptive ratio", {

@@ -34,8 +34,13 @@
 #'       its bootstrap `ci_lower`/`ci_upper`, and `lambda_per_subject`.}
 #'     \item{lackOfFit}{The residual sum of squares from a through-origin fit
 #'       of `lambda` on `subjects`, relative to the total sum of squares
-#'       around the mean `lambda`. `NA` when fewer than 3 runs are supplied
-#'       (a line always fits 2 points, so the statistic is uninformative).}
+#'       around the mean `lambda`. Near 0 indicates a good through-origin fit
+#'       (consistent with proportional scaling); values approaching or
+#'       exceeding 1 indicate a poor one. `NA` when fewer than 3 runs are
+#'       supplied (a line always fits 2 points, so the statistic is
+#'       uninformative) or when every fitted `lambda` is identical (e.g. every
+#'       run's estimate pinned at the same lower bound), leaving no variance
+#'       for the ratio to describe.}
 #'     \item{nonlinear}{`TRUE` when `lambda_per_subject` spreads over more
 #'       than `tolerance` of its mean across runs.}
 #'     \item{tolerance}{The tolerance used, echoed back for reference.}
@@ -67,12 +72,6 @@ validateSSEPpeScaling <- function(runs, comparisons = NULL, conf.level = 0.95,
       ))
     }
     subjects <- .studySampleSize(run)$size
-    if (is.na(subjects) || subjects <= 0) {
-      .abortSSE(c(
-        "Every run needs a positive {.field runInfo$studySampleSize}.",
-        "i" = "Found {.val {subjects}} for one of the supplied runs."
-      ))
-    }
     list(cmp = cmp,
          fit = .ppeFit(run, cmp, conf.level = conf.level,
                        bootstrapSamples = bootstrapSamples),
@@ -108,7 +107,14 @@ validateSSEPpeScaling <- function(runs, comparisons = NULL, conf.level = 0.95,
     # Through-origin line: lambda = beta * subjects.
     beta <- sum(table$lambda * table$subjects) / sum(table$subjects^2)
     resid <- table$lambda - beta * table$subjects
-    lack_of_fit <- sum(resid^2) / sum((table$lambda - mean(table$lambda))^2)
+    total_ss <- sum((table$lambda - mean(table$lambda))^2)
+    # total_ss is 0 only when every fitted lambda is identical (e.g. every
+    # run's MLE pinned at the same lower bound) -- there is no variance left
+    # for a lack-of-fit ratio to describe, so leave it NA rather than divide
+    # by zero into Inf/NaN.
+    if (total_ss > 0) {
+      lack_of_fit <- sum(resid^2) / total_ss
+    }
   }
   spread <- diff(range(table$lambda_per_subject)) / mean(table$lambda_per_subject)
   nonlinear <- spread > tolerance
