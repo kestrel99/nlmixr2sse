@@ -367,6 +367,7 @@ NULL
     base$mle_n_retained <- integer(0)
     base$mle_n_nonpositive <- integer(0)
     base$mle_boundary <- logical(0)
+    base$df_source <- character(0)
   }
   base
 }
@@ -465,13 +466,18 @@ NULL
   x, comparisons, models, thresholds, base_study, targetPower, studySizes,
   nonpositivePolicy
 ) {
-  # ppe = FALSE: unlike comparisonSummary()'s reporting context, a silent
-  # inferred-df warning here would fire on every plot call for runs that
-  # never declared explicit sseComparison()s (e.g. every fixture in this
-  # package's own test suite), which is the same silent-by-default posture
-  # the exceedance branch already has via .modelDegreesFreedom().
+  # ppe = TRUE: distribution_mle treats df as KNOWN -- it is the exponent in
+  # the noncentral chi-square density the whole fit rests on, not a cosmetic
+  # label. Silencing this (as an earlier version of this function did, to
+  # match the exceedance branch's long-standing silence) would leave no
+  # signal anywhere -- no warning, no output column -- that df was guessed
+  # from parameter counts rather than declared, for the method that is now
+  # the package default. Exceedance's silence is the legacy posture this
+  # whole feature replaces, not a precedent to match. `dfSource` is also
+  # copied into the `df_source` output column below so provenance survives
+  # even when the caller suppresses the warning.
   cmps <- .resolveComparisons(
-    x, comparisons %||% x$runInfo$comparisons, models = models, ppe = FALSE
+    x, comparisons %||% x$runInfo$comparisons, models = models, ppe = TRUE
   )
 
   ineligible <- Filter(function(cmp) !isTRUE(cmp$ppeEligible), cmps)
@@ -533,6 +539,11 @@ NULL
         mle_n_retained = mle_fit$nRetained,
         mle_n_nonpositive = mle_fit$nNonPositive,
         mle_boundary = mle_fit$boundary,
+        # "explicit" for a user-supplied sseComparison(df =), "parameter_count"
+        # when df was inferred by .legacyComparisons() -- the same provenance
+        # the ppe = TRUE warning above reports, kept in the data too so it
+        # survives suppressWarnings()/expect_warning() at the call site.
+        df_source = cmp$dfSource %||% NA_character_,
         stringsAsFactors = FALSE
       )
       row_index <- row_index + 1L

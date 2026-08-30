@@ -54,16 +54,23 @@ test_that("plotSSEPower returns a ggplot backed by OFV summary data", {
 test_that("plotSSEPpePower returns a ggplot backed by PPE curve data", {
   sse <- fake_sse_object()
 
-  p <- plotSSEPpePower(sse, thresholds = 3.84, studySizes = c(6L, 12L, 18L))
+  # fake_sse_object() has no explicit sseComparison() in runInfo$comparisons,
+  # so the distribution_mle default infers df from parameter counts and
+  # (deliberately, since Task 5 restored ppe = TRUE) warns about it. That
+  # warning is exercised on its own below; here it is incidental to what
+  # this test checks, so it is suppressed rather than asserted twice.
+  p <- suppressWarnings(
+    plotSSEPpePower(sse, thresholds = 3.84, studySizes = c(6L, 12L, 18L))
+  )
 
   expect_s3_class(p, "ggplot")
   expect_equal(
     p$data,
-    .ppePowerPlotData(
+    suppressWarnings(.ppePowerPlotData(
       sse,
       thresholds = 3.84,
       studySizes = c(6L, 12L, 18L)
-    )
+    ))
   )
 })
 
@@ -74,7 +81,9 @@ test_that("plot.nlmixr2SSE dispatches to named plot helpers", {
   expect_s3_class(plot(sse, type = "parameter_estimates"), "ggplot")
   expect_s3_class(plot(sse, type = "ofv_distribution"), "ggplot")
   expect_s3_class(plot(sse, type = "power"), "ggplot")
-  expect_s3_class(plot(sse, type = "ppe_power"), "ggplot")
+  # See the comment above: fake_sse_object() has no explicit comparison, so
+  # the distribution_mle default warns about its inferred df.
+  expect_s3_class(suppressWarnings(plot(sse, type = "ppe_power")), "ggplot")
 })
 
 test_that("plotSSEDiagnostics combines panels when patchwork is available", {

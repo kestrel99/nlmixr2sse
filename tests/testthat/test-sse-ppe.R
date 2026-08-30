@@ -96,3 +96,32 @@ test_that("distribution_mle refuses a comparison with an explicit criticalValue"
     "not eligible"
   )
 })
+
+test_that("distribution_mle warns when df is inferred rather than declared", {
+  # distribution_mle treats df as known -- it is the exponent in the
+  # noncentral chi-square density the whole fit rests on -- so, unlike the
+  # legacy exceedance branch, an inferred df must not be silent.
+  sse <- fake_ppe_sse_object(df = 1, ncp = 8, n = 20L, seed = 5L)
+
+  expect_warning(
+    .ppePowerPlotData(sse, nonpositivePolicy = "drop"),
+    "Degrees of freedom inferred"
+  )
+})
+
+test_that("df_source reports explicit vs. inferred provenance", {
+  sse <- fake_ppe_sse_object(df = 1, ncp = 8, n = 20L, seed = 5L)
+
+  explicit_cmp <- sseComparison("simulation", "alt1", df = 1)
+  explicit_data <- .ppePowerPlotData(
+    sse,
+    comparisons = explicit_cmp,
+    nonpositivePolicy = "drop"
+  )
+  expect_true(all(explicit_data$df_source == "explicit"))
+
+  inferred_data <- suppressWarnings(
+    .ppePowerPlotData(sse, nonpositivePolicy = "drop")
+  )
+  expect_true(all(inferred_data$df_source == "parameter_count"))
+})
