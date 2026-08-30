@@ -97,3 +97,70 @@ test_that("rse is a superseded alias equal to mcse_relative_bias, not the old si
   expect_gte(rse_row$value, 0)
   expect_equal(rse_row$value, mcse_row$value)
 })
+
+test_that("the long-format table applies the percentage scaling exactly once, to exactly the relative fields", {
+  # .parameterSummaryRow() itself returns fractional (0-1) values; the
+  # integration point in .singleParameterSummary() multiplies only the
+  # relative-scale fields by 100 to match relative_bias/rse's existing
+  # percentage convention, leaving the absolute-scale fields (mcse_bias,
+  # ci_bias_*) untouched. A systematic scaling bug here (an extra 100x, a
+  # missing one, or scaling the wrong fields) would not be "obviously wrong"
+  # -- the self-consistency check above (rse == mcse_relative_bias) cannot
+  # catch it, since both sides share the same scaling code path. Pin
+  # everything to hand-computed values instead.
+  estimates <- c(9, 12, 8, 13)
+  truth <- 10
+  errors <- estimates - truth
+  rel_errors <- errors / truth
+  z <- stats::qnorm(0.975)
+
+  raw_results <- data.frame(
+    sample = 1:4,
+    model_label = "ref_fit",
+    role = "simulation",
+    error_message = NA_character_,
+    tka = estimates,
+    check.names = FALSE,
+    stringsAsFactors = FALSE
+  )
+  attr(raw_results, "rawResultsHeader") <- list(
+    schema_version = 1L,
+    columns = names(raw_results),
+    base_cols = names(raw_results),
+    theta_cols = "tka",
+    omega_cols = character(0),
+    sigma_cols = character(0),
+    se_cols = character(0),
+    parameter_cols = "tka"
+  )
+  initial_wide <- data.frame(
+    sample = 1:4,
+    tka = rep(truth, 4),
+    check.names = FALSE,
+    stringsAsFactors = FALSE
+  )
+  spec_map <- list(ref_fit = list(
+    thetaCols = "tka", omegaCols = character(0), sigmaCols = character(0)
+  ))
+
+  summary_tbl <- .computeParameterSummary(
+    rawResults = raw_results, initialWide = initial_wide, specMap = spec_map
+  )
+  value_of <- function(stat) {
+    subset(summary_tbl, parameter == "tka" & statistic == stat)$value
+  }
+
+  expect_equal(value_of("mcse_bias"), stats::sd(errors) / sqrt(4))
+  expect_equal(value_of("ci_bias_lower"), mean(errors) - z * stats::sd(errors) / sqrt(4))
+  expect_equal(value_of("ci_bias_upper"), mean(errors) + z * stats::sd(errors) / sqrt(4))
+
+  expect_equal(value_of("mcse_relative_bias"), 100 * stats::sd(rel_errors) / sqrt(4))
+  expect_equal(
+    value_of("ci_relative_bias_lower"),
+    100 * (mean(rel_errors) - z * stats::sd(rel_errors) / sqrt(4))
+  )
+  expect_equal(
+    value_of("ci_relative_bias_upper"),
+    100 * (mean(rel_errors) + z * stats::sd(rel_errors) / sqrt(4))
+  )
+})
