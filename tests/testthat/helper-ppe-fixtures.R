@@ -112,3 +112,23 @@ fake_ppe_sse_object <- function(df = 1, ncp = 8, n = 200L, seed = 101L,
   fake_paired_sse_object(full_ofv = full, reduced_ofv = full + d,
                          subjects = subjects, seed = seed)
 }
+
+# A Type-I-flavoured counterpart to fake_ppe_sse_object(). That fixture fixes
+# the SIMULATION model's OFV low and lets the alternative float above it by
+# the draw -- valid for POWER comparisons, where the simulation model is
+# cmp$full (the richer, TRUE model that always fits at least as well). A
+# Type-I comparison instead has cmp$reduced == simulation: the alternative is
+# cmp$full, so a valid (non-negative) nested test statistic needs the
+# ALTERNATIVE model's OFV to be the lower one, with the simulation model's
+# floating above it by a CENTRAL (ncp = 0) chi-square draw -- the opposite
+# assignment from fake_ppe_sse_object(). Reusing that fixture's sim-low
+# convention for a Type-I comparison instead produces test statistics that
+# are negative with probability 1, which .ppeChiSquareMle() correctly refuses
+# to fit ("needs at least 2 positive test statistics") -- not a bug in the
+# estimator, just the wrong fixture for the job.
+fake_ppe_type1_sse_object <- function(df = 1, n = 200L, seed = 101L, subjects = 12L) {
+  d <- ppe_dofv(n = n, df = df, ncp = 0, seed = seed)
+  alt_floor <- rep(1000, n)
+  fake_paired_sse_object(full_ofv = alt_floor + d, reduced_ofv = alt_floor,
+                         subjects = subjects, seed = seed)
+}

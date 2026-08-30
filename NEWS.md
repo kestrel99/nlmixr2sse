@@ -1,5 +1,26 @@
 # nlmixr2sse 0.1
 
+* New `ppeSummary()`: one row per comparison combining the `distribution_mle`
+  point estimate with a parametric-bootstrap uncertainty interval and
+  provenance (`df_source`, `boundary`, retained/discarded counts). The
+  bootstrap draws synthetic test statistics from the FITTED noncentral
+  chi-square, refits the MLE to each draw, and takes percentile quantiles of
+  the refits -- always reported as `interval_type = "model_based"`, never
+  "empirical": `rchisq()` draws are strictly positive and can never reproduce
+  the truncation the real data underwent, so the interval covers estimator
+  variability under the fitted model only, never model misspecification. This
+  also fills in `plotSSEPpePower()`'s `power_lower`/`power_upper`, previously
+  `NA` under `distribution_mle`, with the same bootstrap. `bootstrapSamples =
+  0` skips the bootstrap (in either function) and returns the point estimate
+  and counts with `NA` bounds, for callers who want the cheap estimate only.
+* `plotSSEPpePower()` now renders Type-I comparisons (where the simulation
+  model is the *reduced* member) as a point-range of the estimated Type-I
+  rate against a dashed nominal `alpha` reference line, faceted by threshold
+  like the power curve -- a Type-I comparison estimates `df`, not a
+  noncentrality, so it has no sample-size curve to draw. A call that mixes
+  power and Type-I comparisons renders only the power curve and warns that
+  the Type-I ones were omitted, pointing to `ppeSummary()` for their
+  estimates.
 * `plotSSEPpePower()`/`.ppePowerPlotData()` gain `method = c("distribution_mle",
   "exceedance")`. **`"distribution_mle"` is the new default**: it fits ONE
   noncentrality parameter to the whole retained likelihood-ratio test-statistic
@@ -11,9 +32,9 @@
   "exceedance"`, unchanged in behaviour, with its previously-internal
   per-threshold values now exposed as `threshold_exceedance_probability` and
   `threshold_implied_ncp` so the two estimators' outputs can never be
-  confused. `distribution_mle`'s `power_lower`/`power_upper` are `NA` for
-  now (no ribbon is drawn); a parametric-bootstrap uncertainty interval is
-  planned for a future release. PPE now requires the comparison to be built
+  confused. `distribution_mle`'s `power_lower`/`power_upper` were `NA` when
+  this was first added (no ribbon was drawn); see the parametric-bootstrap
+  entry above -- they are now real. PPE now requires the comparison to be built
   with `sseComparison(df = )`, not `sseComparison(criticalValue = )`:
   `distribution_mle` assumes a noncentral chi-square alternative that an
   explicit `criticalValue` gives no basis for, and refuses such comparisons

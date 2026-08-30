@@ -132,3 +132,134 @@ test_that("df_source reports explicit vs. inferred provenance", {
   )
   expect_true(all(inferred_data$df_source == "parameter_count"))
 })
+
+# --- .ppeParametricBootstrap() -------------------------------------------
+
+test_that("the bootstrap is reproducible under a fixed seed", {
+  a <- .ppeParametricBootstrap(8, df = 1, nRetained = 100L,
+                               bootstrapSamples = 50L, seed = 5L)
+  b <- .ppeParametricBootstrap(8, df = 1, nRetained = 100L,
+                               bootstrapSamples = 50L, seed = 5L)
+
+  expect_equal(a$ci_lower, b$ci_lower)
+  expect_equal(a$ci_upper, b$ci_upper)
+})
+
+test_that("the bootstrap interval brackets the point estimate", {
+  res <- .ppeParametricBootstrap(8, df = 1, nRetained = 200L,
+                                 bootstrapSamples = 200L, seed = 3L)
+
+  expect_lt(res$ci_lower, 8)
+  expect_gt(res$ci_upper, 8)
+  expect_equal(res$n_successful, 200L)
+  expect_equal(res$interval_type, "model_based")
+})
+
+test_that("the caller's RNG stream is left untouched", {
+  set.seed(99L)
+  before <- .Random.seed
+  .ppeParametricBootstrap(8, df = 1, nRetained = 50L,
+                          bootstrapSamples = 20L, seed = 5L)
+
+  expect_equal(.Random.seed, before)
+})
+
+test_that("bootstrapSamples = 0 skips the bootstrap without changing the estimate", {
+  res <- .ppeParametricBootstrap(8, df = 1, nRetained = 50L,
+                                 bootstrapSamples = 0L, seed = 5L)
+
+  expect_true(is.na(res$ci_lower))
+  expect_equal(res$n_successful, 0L)
+})
+
+test_that("bootstrap failures are counted rather than aborting the fit", {
+  res <- .ppeParametricBootstrap(1e-16, df = 1, nRetained = 3L,
+                                 bootstrapSamples = 20L, seed = 5L)
+
+  expect_equal(res$n_successful + res$n_failed, 20L)
+})
+
+test_that("the df-target bootstrap also brackets its point estimate", {
+  # Only the ncp-target path is exercised above (that is what the plan's
+  # tests cover); a Type-I comparison bootstraps df instead (ncp held at 0),
+  # a separate code path in .ppeParametricBootstrap() that needs its own
+  # coverage.
+  res <- .ppeParametricBootstrap(4, df = NULL, nRetained = 300L,
+                                 bootstrapSamples = 200L, target = "df",
+                                 seed = 9L)
+
+  expect_lt(res$ci_lower, 4)
+  expect_gt(res$ci_upper, 4)
+  expect_equal(res$interval_type, "model_based")
+})
+
+test_that(".ppeDefaultSeed wraps correctly for a seed near the integer maximum", {
+  # base + offset done in integer arithmetic would silently overflow to NA
+  # (with a warning) once runInfo$seed sits close to
+  # .Machine$integer.max (2147483647L); .ppeDefaultSeed() must do the
+  # addition in double precision and only cast back to integer once reduced
+  # modulo 2147483647.
+  sse <- fake_ppe_sse_object(df = 1, ncp = 8, n = 20L, seed = 2147483000L)
+  cmp <- sseComparison("simulation", "alt1", df = 1)
+
+  expect_silent(seed <- .ppeDefaultSeed(sse, cmp))
+  expect_false(is.na(seed))
+  expect_true(is.integer(seed))
+})
+
+# --- ppeSummary() ----------------------------------------------------------
+
+test_that("ppeSummary reports estimate, interval, counts, and provenance", {
+  sse <- fake_ppe_sse_object(df = 1, ncp = 10, n = 80L, seed = 21L)
+  cmp <- sseComparison("simulation", "alt1", df = 1)
+
+  s <- ppeSummary(sse, comparisons = cmp, bootstrapSamples = 100L, bootSeed = 4L)
+
+  expect_equal(s$parameter, "ncp")
+  expect_equal(s$mode, "power")
+  expect_equal(s$df_source, "explicit")
+  expect_equal(s$interval_type, "model_based")
+  expect_true(all(c("n", "n_nonpositive", "n_bootstrap_successful",
+                    "n_bootstrap_failed", "boundary", "probability") %in% names(s)))
+  expect_gt(s$estimate, 0)
+})
+
+test_that("a comparison with a custom critical value is refused by PPE", {
+  sse <- fake_ppe_sse_object(df = 1, ncp = 10, n = 40L, seed = 22L)
+  cmp <- sseComparison("simulation", "alt1", criticalValue = 5)
+
+  expect_error(ppeSummary(sse, comparisons = cmp), "noncentral chi-square")
+})
+
+test_that("ppeSummary(bootstrapSamples = 0) keeps the point estimate and counts, drops only the interval", {
+  # A user must be able to get the cheap point estimate without paying for
+  # the bootstrap.
+  sse <- fake_ppe_sse_object(df = 1, ncp = 10, n = 60L, seed = 23L)
+  cmp <- sseComparison("simulation", "alt1", df = 1)
+
+  s <- ppeSummary(sse, comparisons = cmp, bootstrapSamples = 0L)
+
+  expect_true(is.na(s$ci_lower))
+  expect_true(is.na(s$ci_upper))
+  expect_equal(s$n_bootstrap_successful, 0L)
+  expect_equal(s$n_bootstrap_failed, 0L)
+  expect_gt(s$estimate, 0)
+})
+
+test_that("ppeSummary reports one row per comparison, distinguishing power from type1", {
+  power_sse <- fake_ppe_sse_object(df = 1, ncp = 10, n = 60L, seed = 24L)
+  type1_sse <- fake_ppe_type1_sse_object(df = 1, n = 60L, seed = 24L)
+
+  power_cmp <- sseComparison("simulation", "alt1", df = 1, label = "power check")
+  type1_cmp <- sseComparison("alt1", "simulation", df = 1, label = "type1 check")
+
+  power_row <- ppeSummary(power_sse, comparisons = power_cmp, bootstrapSamples = 30L, bootSeed = 1L)
+  type1_row <- ppeSummary(type1_sse, comparisons = type1_cmp, bootstrapSamples = 30L, bootSeed = 1L)
+
+  s <- rbind(power_row, type1_row)
+
+  expect_equal(nrow(s), 2L)
+  expect_equal(s$mode, c("power", "type1"))
+  expect_equal(s$parameter, c("ncp", "df"))
+  expect_true(all(s$interval_type == "model_based"))
+})

@@ -86,6 +86,59 @@ test_that("plot.nlmixr2SSE dispatches to named plot helpers", {
   expect_s3_class(suppressWarnings(plot(sse, type = "ppe_power")), "ggplot")
 })
 
+test_that("a power comparison's ribbon is a real bootstrap interval, not still NA", {
+  sse <- fake_ppe_sse_object(df = 1, ncp = 10, n = 100L, seed = 61L)
+  cmp <- sseComparison("simulation", "alt1", df = 1)
+
+  data <- .ppePowerPlotData(
+    sse, thresholds = 3.84, studySizes = c(6L, 12L, 18L),
+    comparisons = cmp, nonpositivePolicy = "drop",
+    bootstrapSamples = 100L, bootSeed = 7L
+  )
+
+  expect_true(all(is.finite(data$power_lower)))
+  expect_true(all(is.finite(data$power_upper)))
+  # The interval must bracket the point estimate for at least one row, or a
+  # "real" ribbon that happens to sit on top of the curve would pass this
+  # check for the wrong reason.
+  expect_true(any(data$power_lower < data$power & data$power < data$power_upper))
+})
+
+test_that("a type1 comparison renders a point-range, not a curve", {
+  sse <- fake_ppe_type1_sse_object(df = 1, n = 200L, seed = 71L)
+  p <- plotSSEPpePower(
+    sse, comparisons = sseComparison("alt1", "simulation", df = 1),
+    bootstrapSamples = 50L, bootSeed = 3L
+  )
+
+  geoms <- vapply(p$layers, function(l) class(l$geom)[[1L]], character(1))
+  expect_true("GeomPointrange" %in% geoms)
+  expect_false("GeomLine" %in% geoms)
+})
+
+test_that("mixing power and type1 comparisons warns rather than plotting both", {
+  sse <- fake_ppe_sse_object(df = 1, ncp = 8, n = 100L, seed = 72L)
+  expect_warning(
+    plotSSEPpePower(sse, comparisons = list(
+      sseComparison("simulation", "alt1", df = 1),
+      sseComparison("alt1", "simulation", df = 1, label = "type1 check")
+    ), bootstrapSamples = 20L, bootSeed = 3L),
+    "omitted"
+  )
+})
+
+test_that("mixing power and type1 comparisons still renders the power curve", {
+  sse <- fake_ppe_sse_object(df = 1, ncp = 8, n = 100L, seed = 73L)
+  p <- suppressWarnings(plotSSEPpePower(sse, comparisons = list(
+    sseComparison("simulation", "alt1", df = 1),
+    sseComparison("alt1", "simulation", df = 1, label = "type1 check")
+  ), bootstrapSamples = 20L, bootSeed = 3L))
+
+  geoms <- vapply(p$layers, function(l) class(l$geom)[[1L]], character(1))
+  expect_true("GeomLine" %in% geoms)
+  expect_false("GeomPointrange" %in% geoms)
+})
+
 test_that("plotSSEDiagnostics combines panels when patchwork is available", {
   skip_if_not_installed("patchwork")
 

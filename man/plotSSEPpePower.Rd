@@ -14,6 +14,8 @@ plotSSEPpePower(
   method = c("distribution_mle", "exceedance"),
   comparisons = NULL,
   nonpositivePolicy = c("warn", "error", "drop"),
+  bootstrapSamples = 1000L,
+  bootSeed = NULL,
   ...
 )
 }
@@ -32,19 +34,29 @@ sample size achieving \code{targetPower}.}
 \item{targetPower}{Target power percentage used when constructing the default
 \code{studySizes} grid.}
 
-\item{conf.level}{Confidence level for the Monte-Carlo uncertainty ribbon.
-Used only under \code{method = "exceedance"}; \code{"distribution_mle"} has no
-uncertainty ribbon yet (see \code{method} below).}
+\item{conf.level}{Confidence level for the Monte-Carlo uncertainty ribbon
+(\code{"exceedance"}) or the parametric-bootstrap interval
+(\code{"distribution_mle"}).}
 
 \item{method}{PPE estimator. \code{"distribution_mle"} (the default) fits ONE
-noncentrality parameter to the whole retained test-statistic
-distribution by maximum likelihood (Ueckert, Karlsson & Hooker 2016;
-the method PsN implements) and scales it linearly with study size; its
-\code{power_lower}/\code{power_upper} are \code{NA} until a future task adds the
-parametric-bootstrap uncertainty. \code{"exceedance"} is the original
-estimator: for each threshold separately, it inverts that threshold's
-own exceedance rate into a noncentrality, which can imply a different
-effect size at every threshold.}
+noncentrality parameter (power comparisons) or \code{df} (Type-I comparisons)
+to the whole retained test-statistic distribution by maximum likelihood
+(Ueckert, Karlsson & Hooker 2016; the method PsN implements). A power
+comparison's noncentrality is scaled linearly with study size into a
+curve; its \code{power_lower}/\code{power_upper} ribbon comes from a
+parametric-bootstrap interval (\code{interval_type = "model_based"}; see
+\code{.ppeParametricBootstrap()} -- it covers estimator variability under the
+fitted model only, never model misspecification, and is never
+"empirical"). A Type-I comparison has no sample-size curve -- \code{df} is not
+a noncentrality that scales -- so it renders separately as a
+point-range of the estimated Type-I rate against a dashed nominal
+\code{alpha} reference line; when a call mixes power and Type-I comparisons,
+the Type-I ones are omitted from the curve with a warning (see
+\code{ppeSummary()} for their estimates instead). \code{"exceedance"} is the
+original estimator: for each threshold separately, it inverts that
+threshold's own exceedance rate into a noncentrality, which can imply a
+different effect size at every threshold; it has no Type-I rendering and
+ignores comparison \code{mode} entirely.}
 
 \item{comparisons}{Optional \code{sseComparison()} object or list of them,
 passed to \link[=sseComparison]{.resolveComparisons()}. Only used under
@@ -55,6 +67,15 @@ to the legacy simulation-vs-alternative comparisons.}
 statistics excluded from the \code{"distribution_mle"} fit: \code{"warn"} (the
 default), \code{"error"}, or \code{"drop"} (silent). See
 \code{.ppeApplyNonpositivePolicy()}.}
+
+\item{bootstrapSamples}{Number of parametric-bootstrap replicates per
+comparison, used only under \code{method = "distribution_mle"}. \code{0} skips the
+bootstrap and leaves the ribbon/point-range bounds \code{NA}.}
+
+\item{bootSeed}{Optional integer seed for the bootstrap. \code{NULL} (the
+default) derives a seed deterministically from the run and each
+comparison's label (\code{.ppeDefaultSeed()}), so repeated calls on the same
+run reproduce the same interval without the caller managing seeds.}
 
 \item{...}{Reserved for future extensions.}
 }

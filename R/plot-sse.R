@@ -462,9 +462,17 @@ NULL
 # scaled linearly with study size. Unlike the exceedance estimator, this fit
 # does not depend on `threshold` at all -- it is computed once per comparison
 # and reused for every threshold, which is the entire point of the change.
+#
+# Restricted to power-mode comparisons: a Type-I comparison's estimated
+# quantity is df, not a noncentrality that scales with study size, so it has
+# no sample-size curve to draw here at all. plotSSEPpePower() renders any
+# Type-I comparisons separately as a point-range
+# (.ppeType1PointRangeData()/.plotSSEPpeType1PointRange()); a Type-I row that
+# reaches this function (e.g. because a caller invoked it directly) is
+# silently skipped rather than forced into a curve that means nothing for it.
 .ppePowerPlotDataMle <- function(
   x, comparisons, models, thresholds, base_study, targetPower, studySizes,
-  nonpositivePolicy
+  nonpositivePolicy, conf.level = 0.95, bootstrapSamples = 1000L, bootSeed = NULL
 ) {
   # ppe = TRUE: distribution_mle treats df as KNOWN -- it is the exponent in
   # the noncentral chi-square density the whole fit rests on, not a cosmetic
@@ -490,6 +498,13 @@ NULL
     ))
   }
 
+  # Type-I comparisons have no sample-size curve (df is not a noncentrality
+  # that scales with N) -- see the function header. Skip them here; any
+  # eligibility problem they have was already reported above regardless of
+  # mode, so this filter only ever drops rows that were always going to be
+  # rendered elsewhere, never ones that silently vanish unexplained.
+  cmps <- Filter(function(cmp) identical(cmp$mode, "power"), cmps)
+
   rows <- list()
   row_index <- 1L
   for (cmp in cmps) {
@@ -501,10 +516,21 @@ NULL
     mle_fit <- .ppeChiSquareMle(test_stat, df = cmp$df)
     .ppeApplyNonpositivePolicy(mle_fit$nNonPositive, mle_fit$n, nonpositivePolicy)
 
-    # The non-simulation member of the comparison -- mirrors what
+    # One bootstrap per comparison, reused across every threshold below --
+    # the fit itself does not depend on threshold, so refitting per-threshold
+    # would just repeat the same (expensive) work `length(thresholds)` times.
+    boot <- .ppeParametricBootstrap(
+      mle_fit$estimate, df = cmp$df, nRetained = mle_fit$nRetained,
+      bootstrapSamples = bootstrapSamples, target = "ncp",
+      conf.level = conf.level, seed = bootSeed %||% .ppeDefaultSeed(x, cmp)
+    )
+    has_interval <- is.finite(boot$ci_lower) && is.finite(boot$ci_upper)
+
+    # mode is always "power" here (Type-I rows were filtered out above), so
+    # the non-simulation member is always cmp$reduced -- mirrors what
     # .ofvDeltaPlotData()'s `model_label` always was for the legacy
     # power-mode comparisons the exceedance branch still builds.
-    other_label <- if (identical(cmp$mode, "power")) cmp$reduced else cmp$full
+    other_label <- cmp$reduced
 
     for (threshold in thresholds) {
       sizes <- studySizes %||% .defaultPpeStudySizes(
@@ -515,7 +541,26 @@ NULL
         targetPower = targetPower
       )
 
-      scaled_ncp <- mle_fit$estimate * sizes / base_study$size
+      scale <- sizes / base_study$size
+      scaled_ncp <- mle_fit$estimate * scale
+
+      # The noncentrality scales linearly with study size, and pchisq(...,
+      # ncp = ) is monotone increasing in ncp, so the bootstrap ncp bounds
+      # map to the power bounds in the same order -- no reordering needed,
+      # unlike the Type-I df bootstrap (.ppeType1PointRangeData()), where the
+      # mapping is monotone DECREASING.
+      power_lower <- rep(NA_real_, length(sizes))
+      power_upper <- rep(NA_real_, length(sizes))
+      if (has_interval) {
+        power_lower <- 100 * vapply(
+          boot$ci_lower * scale, .ppeTailProbability, numeric(1),
+          threshold = threshold, df = cmp$df
+        )
+        power_upper <- 100 * vapply(
+          boot$ci_upper * scale, .ppeTailProbability, numeric(1),
+          threshold = threshold, df = cmp$df
+        )
+      }
 
       rows[[row_index]] <- data.frame(
         model_label = other_label,
@@ -530,11 +575,8 @@ NULL
           threshold = threshold,
           df = cmp$df
         ),
-        # Task 6 fills these from the parametric bootstrap. An invented
-        # interval here would be worse than an absent one -- see the module
-        # header for why this task does not attempt one.
-        power_lower = NA_real_,
-        power_upper = NA_real_,
+        power_lower = power_lower,
+        power_upper = power_upper,
         mle_ncp = mle_fit$estimate,
         mle_n_retained = mle_fit$nRetained,
         mle_n_nonpositive = mle_fit$nNonPositive,
@@ -558,6 +600,101 @@ NULL
   data[order(data$threshold, data$model_label, data$study_size), , drop = FALSE]
 }
 
+# Type-I companion to .ppePowerPlotDataMle(): one row per Type-I comparison
+# per threshold (NOT per study size -- df is not a noncentrality that scales
+# with N, so there is no curve to grid over; see that function's header).
+# The point estimate at threshold tau generalises
+# ppeSummary()'s single-critical-value `probability` the same way the power
+# curve generalises beyond a single threshold: P(T > tau) under the fitted
+# df, evaluated at every tau in `thresholds`, exactly like power-mode's
+# .ppeTailProbability() evaluates its scaled ncp at every tau rather than
+# only at the comparison's own criticalValue.
+.emptyPpeType1PlotData <- function() {
+  data.frame(
+    comparison = character(0),
+    model_label = character(0),
+    threshold = numeric(0),
+    degrees_freedom = numeric(0),
+    mle_df = numeric(0),
+    rate = numeric(0),
+    rate_lower = numeric(0),
+    rate_upper = numeric(0),
+    alpha = numeric(0),
+    mle_n_retained = integer(0),
+    mle_n_nonpositive = integer(0),
+    mle_boundary = logical(0),
+    df_source = character(0),
+    stringsAsFactors = FALSE
+  )
+}
+
+.ppeType1PointRangeData <- function(
+  x, comparisons, thresholds, nonpositivePolicy, conf.level = 0.95,
+  bootstrapSamples, bootSeed
+) {
+  rows <- list()
+  row_index <- 1L
+  for (cmp in comparisons) {
+    test_stat <- .comparisonTestStatistic(x, cmp)
+    if (length(test_stat) == 0L) {
+      next
+    }
+
+    mle_fit <- .ppeChiSquareMle(test_stat, ncp = 0)
+    .ppeApplyNonpositivePolicy(mle_fit$nNonPositive, mle_fit$n, nonpositivePolicy)
+
+    boot <- .ppeParametricBootstrap(
+      mle_fit$estimate, df = cmp$df, nRetained = mle_fit$nRetained,
+      bootstrapSamples = bootstrapSamples, target = "df",
+      conf.level = conf.level, seed = bootSeed %||% .ppeDefaultSeed(x, cmp)
+    )
+    has_interval <- is.finite(boot$ci_lower) && is.finite(boot$ci_upper)
+
+    for (threshold in thresholds) {
+      rate <- 100 * .ppeTailProbability(threshold, df = mle_fit$estimate, ncp = 0)
+
+      rate_lower <- NA_real_
+      rate_upper <- NA_real_
+      if (has_interval) {
+        # A larger df pushes the chi-square rightward, LOWERING the tail
+        # probability at a fixed threshold -- the opposite direction from
+        # the power curve's ncp bootstrap. min/max keeps rate_lower <=
+        # rate_upper regardless of that reversal, rather than assuming the
+        # low end of the df interval maps to the low end of the rate one.
+        r_lo_df <- 100 * .ppeTailProbability(threshold, df = boot$ci_lower, ncp = 0)
+        r_hi_df <- 100 * .ppeTailProbability(threshold, df = boot$ci_upper, ncp = 0)
+        rate_lower <- min(r_lo_df, r_hi_df)
+        rate_upper <- max(r_lo_df, r_hi_df)
+      }
+
+      rows[[row_index]] <- data.frame(
+        comparison = cmp$label,
+        model_label = cmp$full,
+        threshold = threshold,
+        degrees_freedom = cmp$df,
+        mle_df = mle_fit$estimate,
+        rate = rate,
+        rate_lower = rate_lower,
+        rate_upper = rate_upper,
+        alpha = cmp$alpha,
+        mle_n_retained = mle_fit$nRetained,
+        mle_n_nonpositive = mle_fit$nNonPositive,
+        mle_boundary = mle_fit$boundary,
+        df_source = cmp$dfSource %||% NA_character_,
+        stringsAsFactors = FALSE
+      )
+      row_index <- row_index + 1L
+    }
+  }
+
+  if (row_index == 1L) {
+    return(.emptyPpeType1PlotData())
+  }
+
+  data <- do.call(rbind, rows)
+  data[order(data$threshold, data$comparison), , drop = FALSE]
+}
+
 .ppePowerPlotData <- function(
   x,
   thresholds = NULL,
@@ -567,7 +704,9 @@ NULL
   conf.level = 0.95,
   method = c("distribution_mle", "exceedance"),
   comparisons = NULL,
-  nonpositivePolicy = c("warn", "error", "drop")
+  nonpositivePolicy = c("warn", "error", "drop"),
+  bootstrapSamples = 1000L,
+  bootSeed = NULL
 ) {
   .assertSSEObject(x)
   method <- match.arg(method)
@@ -608,7 +747,8 @@ NULL
   .ppePowerPlotDataMle(
     x = x, comparisons = comparisons, models = models, thresholds = thresholds,
     base_study = base_study, targetPower = targetPower, studySizes = studySizes,
-    nonpositivePolicy = nonpositivePolicy
+    nonpositivePolicy = nonpositivePolicy, conf.level = conf.level,
+    bootstrapSamples = bootstrapSamples, bootSeed = bootSeed
   )
 }
 
@@ -853,6 +993,97 @@ plotSSEPower <- function(
     ggplot2::theme_minimal()
 }
 
+#' Plot a Type-I point-range panel for distribution_mle Type-I comparisons
+#'
+#' A Type-I comparison estimates `df` (with `ncp` held at `0`), not a
+#' noncentrality -- there is nothing to scale with study size, so unlike
+#' `.ppePowerPlotDataMle()`'s curve this renders one point-range per
+#' comparison per threshold: the estimated exceedance probability under the
+#' fitted `df` at that threshold (generalising `ppeSummary()`'s
+#' single-critical-value `probability` across every threshold in
+#' `thresholds`, exactly as the power curve generalises across thresholds
+#' rather than using only the comparison's own `criticalValue`), with a
+#' parametric-bootstrap point-range and a dashed reference line at each
+#' comparison's own declared `alpha` (per-comparison, matching how
+#' `comparisonSummary()`/`ppeSummary()` already treat `alpha`).
+#'
+#' @noRd
+.plotSSEPpeType1PointRange <- function(
+  x, comparisons, thresholds, nonpositivePolicy, conf.level = 0.95,
+  bootstrapSamples, bootSeed
+) {
+  ineligible <- Filter(function(cmp) !isTRUE(cmp$ppeEligible), comparisons)
+  if (length(ineligible) > 0L) {
+    bad <- vapply(ineligible, `[[`, character(1), "label")
+    # cli::cli_abort() directly, not .abortSSE(): the "i" elements below are
+    # already named, and .abortSSE() unconditionally wraps its argument in
+    # c("!" = ...), which turns an already-named "i" element into "!.i" --
+    # a name cli does not recognise as a bullet type. See .ppeFit()'s same
+    # workaround in R/sse-ppe.R.
+    cli::cli_abort(c(
+      "!" = "{length(bad)} comparison{?s} not eligible for distribution-based PPE: {.val {bad}}.",
+      "i" = "PPE assumes a noncentral chi-square alternative, which an explicit {.arg criticalValue} gives no basis for.",
+      "i" = "Build the comparison with {.arg df} instead of {.arg criticalValue}, or use {.arg method = \"exceedance\"}."
+    ))
+  }
+
+  thresholds <- thresholds %||% sort(unique(x$powerSummary$threshold[x$powerSummary$threshold > 0]))
+  checkmate::assertNumeric(thresholds, any.missing = FALSE, min.len = 1L, lower = 0)
+  thresholds <- sort(unique(as.numeric(thresholds[thresholds > 0])))
+  if (length(thresholds) == 0L) {
+    .abortSSE("PPE plotting requires at least one positive OFV threshold.")
+  }
+
+  data <- .ppeType1PointRangeData(
+    x, comparisons = comparisons, thresholds = thresholds,
+    nonpositivePolicy = nonpositivePolicy, conf.level = conf.level,
+    bootstrapSamples = bootstrapSamples, bootSeed = bootSeed
+  )
+
+  if (nrow(data) == 0L) {
+    return(
+      ggplot2::ggplot() +
+        ggplot2::labs(title = "Parametric power estimation", subtitle = "No data to display") +
+        ggplot2::theme_void()
+    )
+  }
+
+  has_interval <- any(is.finite(data$rate_lower) & is.finite(data$rate_upper))
+
+  p <- ggplot2::ggplot(
+    data,
+    ggplot2::aes(x = comparison, y = rate, colour = model_label)
+  )
+  p <- if (has_interval) {
+    p + ggplot2::geom_pointrange(
+      ggplot2::aes(ymin = rate_lower, ymax = rate_upper)
+    )
+  } else {
+    p + ggplot2::geom_point(size = 2)
+  }
+
+  p +
+    ggplot2::geom_hline(
+      ggplot2::aes(yintercept = 100 * alpha),
+      linetype = 2,
+      linewidth = 0.5,
+      colour = "grey40"
+    ) +
+    ggplot2::facet_wrap(
+      ~ threshold,
+      labeller = ggplot2::label_bquote(delta[OFV] == .(threshold))
+    ) +
+    ggplot2::labs(
+      x = "Comparison",
+      y = "Estimated Type-I rate (%)",
+      colour = "Model",
+      title = "Parametric power estimation (Type-I)"
+    ) +
+    ggplot2::coord_cartesian(ylim = c(0, 100)) +
+    ggplot2::theme_minimal() +
+    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 30, hjust = 1))
+}
+
 #' Plot PPE power-versus-sample-size curves
 #'
 #' @param x An `nlmixr2SSE` object.
@@ -864,18 +1095,28 @@ plotSSEPower <- function(
 #'   sample size achieving `targetPower`.
 #' @param targetPower Target power percentage used when constructing the default
 #'   `studySizes` grid.
-#' @param conf.level Confidence level for the Monte-Carlo uncertainty ribbon.
-#'   Used only under `method = "exceedance"`; `"distribution_mle"` has no
-#'   uncertainty ribbon yet (see `method` below).
+#' @param conf.level Confidence level for the Monte-Carlo uncertainty ribbon
+#'   (`"exceedance"`) or the parametric-bootstrap interval
+#'   (`"distribution_mle"`).
 #' @param method PPE estimator. `"distribution_mle"` (the default) fits ONE
-#'   noncentrality parameter to the whole retained test-statistic
-#'   distribution by maximum likelihood (Ueckert, Karlsson & Hooker 2016;
-#'   the method PsN implements) and scales it linearly with study size; its
-#'   `power_lower`/`power_upper` are `NA` until a future task adds the
-#'   parametric-bootstrap uncertainty. `"exceedance"` is the original
-#'   estimator: for each threshold separately, it inverts that threshold's
-#'   own exceedance rate into a noncentrality, which can imply a different
-#'   effect size at every threshold.
+#'   noncentrality parameter (power comparisons) or `df` (Type-I comparisons)
+#'   to the whole retained test-statistic distribution by maximum likelihood
+#'   (Ueckert, Karlsson & Hooker 2016; the method PsN implements). A power
+#'   comparison's noncentrality is scaled linearly with study size into a
+#'   curve; its `power_lower`/`power_upper` ribbon comes from a
+#'   parametric-bootstrap interval (`interval_type = "model_based"`; see
+#'   `.ppeParametricBootstrap()` -- it covers estimator variability under the
+#'   fitted model only, never model misspecification, and is never
+#'   "empirical"). A Type-I comparison has no sample-size curve -- `df` is not
+#'   a noncentrality that scales -- so it renders separately as a
+#'   point-range of the estimated Type-I rate against a dashed nominal
+#'   `alpha` reference line; when a call mixes power and Type-I comparisons,
+#'   the Type-I ones are omitted from the curve with a warning (see
+#'   `ppeSummary()` for their estimates instead). `"exceedance"` is the
+#'   original estimator: for each threshold separately, it inverts that
+#'   threshold's own exceedance rate into a noncentrality, which can imply a
+#'   different effect size at every threshold; it has no Type-I rendering and
+#'   ignores comparison `mode` entirely.
 #' @param comparisons Optional `sseComparison()` object or list of them,
 #'   passed to [.resolveComparisons()][sseComparison()]. Only used under
 #'   `method = "distribution_mle"`; defaults to `x$runInfo$comparisons`, then
@@ -884,6 +1125,13 @@ plotSSEPower <- function(
 #'   statistics excluded from the `"distribution_mle"` fit: `"warn"` (the
 #'   default), `"error"`, or `"drop"` (silent). See
 #'   `.ppeApplyNonpositivePolicy()`.
+#' @param bootstrapSamples Number of parametric-bootstrap replicates per
+#'   comparison, used only under `method = "distribution_mle"`. `0` skips the
+#'   bootstrap and leaves the ribbon/point-range bounds `NA`.
+#' @param bootSeed Optional integer seed for the bootstrap. `NULL` (the
+#'   default) derives a seed deterministically from the run and each
+#'   comparison's label (`.ppeDefaultSeed()`), so repeated calls on the same
+#'   run reproduce the same interval without the caller managing seeds.
 #' @param ... Reserved for future extensions.
 #'
 #' @return A `ggplot` object.
@@ -898,12 +1146,53 @@ plotSSEPpePower <- function(
   method = c("distribution_mle", "exceedance"),
   comparisons = NULL,
   nonpositivePolicy = c("warn", "error", "drop"),
+  bootstrapSamples = 1000L,
+  bootSeed = NULL,
   ...
 ) {
   .assertNamespace("ggplot2", "construct SSE plots")
   .assertSSEObject(x)
   method <- match.arg(method)
   nonpositivePolicy <- match.arg(nonpositivePolicy)
+
+  if (identical(method, "distribution_mle")) {
+    # Split by mode up front so a Type-I comparison never reaches the
+    # sample-size curve and a power comparison never reaches the
+    # point-range. Resolved here with the ppe = TRUE inferred-df warning
+    # suppressed: .ppePowerPlotData() below (the self-contained entry point
+    # its own tests call directly) resolves again and raises that warning
+    # for real, once; this pass exists only to inspect mode composition and
+    # must not double it. When comparisons is later replaced with the
+    # already-resolved power-mode subset, models is dropped too --
+    # .resolveComparisons() refuses supplying both comparisons and models,
+    # and the models filter has already been applied by this resolution.
+    mode_cmps <- suppressWarnings(.resolveComparisons(
+      x, comparisons %||% x$runInfo$comparisons, models = models, ppe = TRUE
+    ))
+    is_type1 <- vapply(mode_cmps, function(cmp) identical(cmp$mode, "type1"), logical(1))
+    type1_cmps <- mode_cmps[is_type1]
+    power_cmps <- mode_cmps[!is_type1]
+
+    if (length(type1_cmps) > 0L && length(power_cmps) > 0L) {
+      bad <- vapply(type1_cmps, `[[`, character(1), "label")
+      cli::cli_warn(c(
+        "!" = "{length(bad)} Type-I comparison{?s} omitted from the power curve: {.val {bad}}.",
+        "i" = "A Type-I comparison estimates {.field df}, not a noncentrality that scales with study size, so it has no sample-size curve.",
+        "i" = "See {.fn ppeSummary} for its estimated rate, or call {.fn plotSSEPpePower} with only Type-I comparisons for its point-range."
+      ))
+    }
+
+    if (length(power_cmps) == 0L) {
+      return(.plotSSEPpeType1PointRange(
+        x, comparisons = type1_cmps, thresholds = thresholds,
+        nonpositivePolicy = nonpositivePolicy, conf.level = conf.level,
+        bootstrapSamples = bootstrapSamples, bootSeed = bootSeed
+      ))
+    }
+
+    comparisons <- power_cmps
+    models <- NULL
+  }
 
   data <- .ppePowerPlotData(
     x,
@@ -914,7 +1203,9 @@ plotSSEPpePower <- function(
     conf.level = conf.level,
     method = method,
     comparisons = comparisons,
-    nonpositivePolicy = nonpositivePolicy
+    nonpositivePolicy = nonpositivePolicy,
+    bootstrapSamples = bootstrapSamples,
+    bootSeed = bootSeed
   )
 
   if (nrow(data) == 0L) {
@@ -938,10 +1229,10 @@ plotSSEPpePower <- function(
     )
   )
 
-  # distribution_mle leaves power_lower/power_upper as NA until a later task
-  # adds the parametric-bootstrap uncertainty; a ribbon built from all-NA
-  # bounds is not a meaningful "no data yet" signal, so skip the layer
-  # entirely rather than let ggplot2 draw nothing but warn about it.
+  # power_lower/power_upper are NA when bootstrapSamples = 0 (the caller
+  # opted out) or when every bootstrap refit failed for a comparison; a
+  # ribbon built from all-NA bounds is not a meaningful signal, so skip the
+  # layer entirely rather than let ggplot2 draw nothing but warn about it.
   has_interval <- any(is.finite(data$power_lower) & is.finite(data$power_upper))
   if (has_interval) {
     p <- p + ggplot2::geom_ribbon(
