@@ -884,6 +884,10 @@
     }
     cov_names <- names(theta)
     dimnames(cov_mat) <- list(cov_names, cov_names)
+    cli::cli_warn(c(
+      "!" = "{.arg fit$cov} has no row/column names; assigning THETA names by position.",
+      "i" = "Positional matching is not auditable -- prefer an explicitly named covariance matrix."
+    ))
   }
 
   if (!identical(rownames(cov_mat), colnames(cov_mat))) {

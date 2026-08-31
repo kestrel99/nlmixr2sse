@@ -282,6 +282,24 @@ test_that("drawOmega keeps a drawable block whose SE is unusable", {
   expect_equal(out[1L, 1L], 0.30)
 })
 
+test_that("an unnamed covariance matrix is accepted positionally, with a warning", {
+  cov <- diag(c(0.04, 0.01))  # no dimnames
+
+  fit <- list(
+    theta = c(tka = 0.45, tcl = 1.0),
+    omega = matrix(numeric(0), 0L, 0L),
+    cov = cov,
+    ui = list(iniDf = data.frame(
+      name = c("tka", "tcl"), ntheta = c(1L, 2L),
+      neta1 = NA_integer_, neta2 = NA_integer_, fix = FALSE,
+      stringsAsFactors = FALSE
+    ))
+  )
+
+  expect_warning(aligned <- .alignedCovariance(fit), "no row/column names|positional")
+  expect_equal(rownames(aligned$cov), c("tka", "tcl"))
+})
+
 test_that("alignedCovariance partitions theta and omega entries", {
   nm <- c("tka", "tcl", "om.eta.ka", "cov.eta.cl.eta.ka", "om.eta.cl")
   cov <- diag(c(0.04, 0.09, 0.01, 0.002, 0.005))

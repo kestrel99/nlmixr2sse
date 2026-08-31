@@ -162,11 +162,16 @@ which values generated the data. They are available only in raw-results mode.
 ### Covariance approximation
 
 `parameterSource = "covariance"` constructs a local parametric approximation
-from the reference fit. `fit$cov` must be a non-empty positive-definite square
-matrix with matching, unique row and column names. Names matching `fit$theta`
-are treated as THETA entries. OMEGA entries use the `nlmixr2est` names
-`om.<eta>` for variances and `cov.<rowEta>.<colEta>` for covariances. An unknown
-name is an error.
+from the reference fit. `fit$cov` must be a non-empty positive-definite
+square matrix. Two forms are accepted: an explicitly named matrix, whose
+row and column names must match and be unique, with names matching
+`fit$theta` treated as THETA entries and the `nlmixr2est` names `om.<eta>`
+(variances) / `cov.<rowEta>.<colEta>` (covariances) treated as OMEGA
+entries -- an unrecognized name is an error; or an unnamed matrix whose
+dimension equals `length(fit$theta)`, in which case THETA names are
+assigned by position and a warning is issued, since positional agreement
+between `fit$cov` and `fit$theta` cannot be audited from the matrix alone.
+The named form is strongly preferred for reproducible, auditable runs.
 
 Only parameters represented in `fit$cov` can vary. Covered THETAs are drawn;
 uncovered THETAs retain their fitted values. Typical nlmixr2 residual-error
