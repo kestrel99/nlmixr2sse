@@ -618,8 +618,21 @@ p-value. A small p-value is evidence the fitted noncentral chi-square poorly
 describes the retained data; it does not by itself invalidate the point
 estimate. A large p-value means the discrepancy was not detectably larger
 than chance at this sample size -- it does not prove the model exactly
-right. This is the ECDF diagnostic PsN's SSE templates also provide (see
-[Difference from PsN](#difference-from-psn) below).
+right. The p-value uses the standard Monte Carlo plus-one correction,
+\(p=(1+\sum_b I(T_b\ge T_{obs}))/(B+1)\), so it is always strictly positive
+regardless of the bootstrap sample count -- the naive
+`mean(null_stats >= observed)` can report an impossible exact zero with a
+finite bootstrap sample, overstating evidence against the fitted model.
+
+The CvM p-value and the ECDF envelope use different bootstrap
+constructions and answer different questions: the CvM p-value's null
+distribution *refits* `.ppeChiSquareMle()` to each synthetic draw (a
+composite-null test, mirroring the uncertainty in re-estimating the fitted
+parameter), while the ECDF pointwise envelope holds the fitted parameter
+*fixed* and asks only how much a correctly-sized sample from that exact
+fitted model would wobble by chance. This is the ECDF diagnostic PsN's SSE
+templates also provide (see [Difference from PsN](#difference-from-psn)
+below).
 
 **`method = "exceedance"`** retains the original per-threshold estimator
 verbatim, for backward compatibility: for each model and positive threshold

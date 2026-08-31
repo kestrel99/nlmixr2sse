@@ -48,11 +48,16 @@
 #' `.ppeParametricBootstrap()`'s `target`-branched draw/refit exactly, so the
 #' null distribution respects the same fixed/estimated roles the point
 #' estimate itself was fit under), recomputes the Cramer-von Mises statistic
-#' for each refit, and returns the proportion of the null (bootstrap)
-#' discrepancies at least as large as the one observed. A small p-value means
-#' the fitted distribution is a poor description of the real data. A refit
-#' that errors is dropped from the null distribution rather than aborting the
-#' whole bootstrap (mirrors `.ppeParametricBootstrap()`'s `n_failed` handling).
+#' for each refit, and returns the plus-one-corrected proportion of the null
+#' (bootstrap) discrepancies at least as large as the one observed --
+#' `(1 + #{T_b >= T_obs}) / (B + 1)`, the standard Monte Carlo p-value
+#' construction, which is never exactly zero even when no bootstrap
+#' discrepancy reaches the observed one (the naive `mean(T_b >= T_obs)` can
+#' report an impossible exact zero with a finite bootstrap sample). A small
+#' p-value means the fitted distribution is a poor description of the real
+#' data. A refit that errors is dropped from the null distribution rather
+#' than aborting the whole bootstrap (mirrors `.ppeParametricBootstrap()`'s
+#' `n_failed` handling).
 #'
 #' @param x Retained (positive) test statistics the original fit used.
 #' @param df Degrees of freedom fixed by the comparison. Used only when
@@ -62,8 +67,11 @@
 #' @param target `"ncp"` (power comparison) or `"df"` (Type-I comparison).
 #' @param bootstrapSamples Number of bootstrap replicates.
 #' @param seed Passed to `.withPpeSeed()`.
-#' @return A single p-value in `[0, 1]`, or `NA_real_` if every bootstrap
-#'   refit failed.
+#' @return A single p-value in `(0, 1]`, computed with the standard
+#'   Monte Carlo plus-one correction
+#'   `(1 + sum(null_stats >= observed)) / (length(null_stats) + 1)` so it is
+#'   never exactly zero regardless of bootstrap sample size, or `NA_real_`
+#'   if every bootstrap refit failed.
 #' @noRd
 .ppeDiagnosticPValue <- function(x, df, estimate, target = c("ncp", "df"),
                                  bootstrapSamples = 1000L, seed = NULL) {
@@ -102,7 +110,7 @@
   if (length(null_stats) == 0L) {
     return(NA_real_)
   }
-  mean(null_stats >= observed)
+  (1 + sum(null_stats >= observed)) / (length(null_stats) + 1)
 }
 
 #' Pointwise bootstrap envelope for the ECDF panel

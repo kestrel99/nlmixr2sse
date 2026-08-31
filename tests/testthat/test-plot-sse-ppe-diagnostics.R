@@ -53,6 +53,41 @@ test_that("Cramer-von Mises separates a correct model from a misspecified one (t
 
 # ---- Diagnostic p-value -------------------------------------------------
 
+test_that("the diagnostic p-value cannot be exactly zero", {
+  # mean(null_stats >= observed) can be exactly 0 with a finite bootstrap
+  # sample, which is not a valid Monte Carlo p-value (it implies infinite
+  # certainty against the fitted model from a finite simulation). The
+  # standard correction is (1 + #{T_b >= T_obs}) / (B + 1), which is always
+  # strictly positive.
+  good <- ppe_dofv(n = 200L, df = 4, ncp = 15, seed = 81L)
+  fit <- .ppeChiSquareMle(good, df = 4)
+
+  p <- .ppeDiagnosticPValue(
+    fit$retained, df = 4, estimate = fit$estimate, target = "ncp",
+    bootstrapSamples = 20L, seed = 5L
+  )
+
+  expect_gt(p, 0)
+  expect_true(p >= 1 / 21)
+})
+
+test_that("the diagnostic p-value floor is 1/(bootstrapSamples + 1), never 0", {
+  # A pathological case where every bootstrap discrepancy could be smaller
+  # than observed: mean(null_stats >= observed) would be exactly 0 under
+  # the old formula. p must always be a multiple of 1/(B + 1), at least
+  # 1/(B + 1).
+  good <- ppe_dofv(n = 400L, df = 1, ncp = 9, seed = 91L)
+  fit <- .ppeChiSquareMle(good, df = 1)
+
+  p <- .ppeDiagnosticPValue(
+    fit$retained, df = 1, estimate = fit$estimate, target = "ncp",
+    bootstrapSamples = 10L, seed = 5L
+  )
+
+  expect_equal(p * 11, round(p * 11))
+  expect_gte(p, 1 / 11)
+})
+
 test_that("the diagnostic p-value is small for a misspecified mixture (power)", {
   bad <- c(ppe_dofv(200L, df = 1, ncp = 2, seed = 34L),
            ppe_dofv(200L, df = 1, ncp = 30, seed = 35L))
