@@ -100,6 +100,19 @@ test_that("legacy comparisons mark df as inferred and warn once", {
   expect_equal(cmps[[1L]]$reduced, "alt1")
 })
 
+test_that("the parameter-count df-fallback warning distinguishes schema columns from free parameters", {
+  # "free.*parameter" alone is not a safe pattern here: "Degrees of
+  # freedom..." already contains the literal substring "free" (inside
+  # "freedom"), so a loose pattern would false-positive-match the OLD
+  # warning text too. "schema" is the distinctive word this fix adds.
+  sse <- fake_ppe_sse_object(df = 1, ncp = 8, n = 20L, seed = 5L)
+
+  expect_warning(
+    .ppePowerPlotData(sse, nonpositivePolicy = "drop"),
+    "schema"
+  )
+})
+
 test_that("the legacy-comparison warning pluralises the comparison count", {
   sse1 <- fake_sse_object(alt_label = "alt1")
   expect_warning(

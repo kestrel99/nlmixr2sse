@@ -144,14 +144,23 @@ If an unfiltered input contains duplicate sample numbers and has a unique set of
 SSE simulation-role rows, those rows are selected automatically. Fewer usable
 rows than requested is an error.
 
-Each selected row supplies THETA, OMEGA, and SIGMA for one simulation replicate.
-This preserves whatever marginal shapes and joint dependence are present in the
-source rows; suitable sources include bootstrap or sampling-importance-resampling
-results. That is often preferable to a local Gaussian approximation when the
-uncertainty distribution is asymmetric or bounded, but its quality is entirely
-that of the upstream procedure and filtering. Dosne et al. (2017) discuss why a
-covariance-matrix approximation can be too symmetric or too narrow for some
-nonlinear mixed-effects models.
+Each selected row supplies THETA, OMEGA, and SIGMA for one simulation
+replicate. Rows are taken as a filtered *contiguous block*, in file/table
+order -- not resampled with replacement or reshuffled -- so this preserves
+whatever within-row joint parameter values and empirical marginal shapes
+are present in that block, but it is not necessarily an i.i.d. draw from
+the parameter-uncertainty distribution unless the source rows already were
+one. This matters most for MCMC-style output: an ordered chain,
+autocorrelation, a burn-in segment not yet removed by `offsetRawres`, or a
+table pre-sorted on some column can all make a contiguous block
+systematically unrepresentative even though each individual row is a valid
+draw. Suitable sources include bootstrap or sampling-importance-resampling
+results, which are typically already exchangeable row-to-row. That is often
+preferable to a local Gaussian approximation when the uncertainty
+distribution is asymmetric or bounded, but its quality is entirely that of
+the upstream procedure, its row ordering, and the requested filtering.
+Dosne et al. (2017) discuss why a covariance-matrix approximation can be
+too symmetric or too narrow for some nonlinear mixed-effects models.
 
 By default, estimation still starts from each analysis model's stored initial
 values. `randomEstimationInits = TRUE` also replaces the free starting values
@@ -677,10 +686,18 @@ explicit comparison is built, the fallback is
   d=\max\{1,\ p_{simulation}-p_{alternative}\},
 \]
 
-where each \(p\) is the number of schema THETA, OMEGA, and SIGMA columns,
-reported as `df_source = "parameter_count"` and, under PPE, accompanied by a
-warning that this is a convenience, not an assertion of correctness -- it
-can be wrong for fixed, constrained, boundary, or non-nested hypotheses.
+where each \(p\) is the number of schema THETA, OMEGA, and SIGMA
+*columns* -- a difference in schema column counts, not a difference in the
+number of *free, estimated* parameters. Fixed parameters, transformed
+parameters, or a schema mismatch unrelated to the actual nested restriction
+being tested can all make this fallback numerically different from what an
+LRT needs. PsN, by contrast, derives its degrees of freedom from
+estimated-parameter counts. The fallback is reported as
+`df_source = "parameter_count"` and, under PPE, accompanied by a warning
+that this is a convenience, not an assertion of correctness -- it can be
+wrong for fixed, constrained, boundary, or non-nested hypotheses, and is
+not directly comparable to PsN's own df in general. Supply an explicit
+`df` via `sseComparison()` for any confirmatory use.
 
 For a requested study size \(n\), with base size \(n_0\) (the number of
 unique nonmissing values in a case-insensitive `ID` column, or the row count
@@ -812,9 +829,15 @@ Before reporting an SSE result, verify:
 - `comparisonSummary()`'s `n_paired_evaluable` (not `n_attempted`) is the
   actual denominator behind any reported rate, and `n_excluded` is not simply
   ignorable;
-- `ppeSummary()`'s `n_nonpositive` count is small relative to `n` -- a large
-  one means the retained-statistics fit is more biased upward by truncation;
-  and
+- `ppeSummary()`'s `n_nonpositive` count is small relative to `n` -- a
+  small exclusion fraction is evidence of a well-behaved fit, but not proof
+  of negligible bias; for a material fraction, treat it (and any
+  `comparisonSummary()`/`n_excluded` fit failures) as an input to an
+  operating-characteristic sensitivity analysis under multiple explicit
+  failure policies (e.g. counting every failure/exclusion as a rejection,
+  as a non-rejection, and reporting the joint distribution of the test
+  statistic, convergence status, and exclusion reason) rather than treating
+  the paired-evaluable or retained-positive rate alone as final; and
 - the proportional-scaling assumption behind any PPE extrapolation was
   exercised with `validateSSEPpeScaling()`'s exploratory consistency
   diagnostic across directly simulated study sizes, not merely assumed,

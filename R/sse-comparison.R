@@ -186,6 +186,7 @@ sseComparison <- function(full, reduced, df = NULL, alpha = 0.05,
   if (ppe) {
     cli::cli_warn(c(
       "!" = "Degrees of freedom inferred from parameter counts for {length(alt_labels)} comparison{?s}.",
+      "i" = "This counts schema THETA/OMEGA/SIGMA columns, not free estimated parameters -- it can be wrong for fixed, constrained, or non-nested hypotheses.",
       "i" = "Parametric power estimation treats df as known; an inferred value is a convenience, not an assertion.",
       "i" = "Define comparisons explicitly with {.fn sseComparison} to remove this warning."
     ))
