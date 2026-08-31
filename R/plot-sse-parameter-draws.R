@@ -48,7 +48,11 @@ plotSSEParameterDraws <- function(x, ...) {
   targets <- draw_summary[, c("parameter", "target_mean")]
 
   p <- ggplot2::ggplot(long, ggplot2::aes(x = value)) +
-    ggplot2::geom_histogram() +
+    # 20 bins, matching plotSSEOfvDistribution()'s histogram convention
+    # (R/plot-sse.R) -- an explicit choice rather than ggplot2's bins = 30
+    # default, which is more likely to fragment a small replicate count into
+    # a sparse, hard-to-read histogram.
+    ggplot2::geom_histogram(bins = 20L) +
     ggplot2::geom_vline(
       data = targets,
       ggplot2::aes(xintercept = target_mean),
