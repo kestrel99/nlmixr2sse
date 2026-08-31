@@ -964,7 +964,7 @@ This comparison is based on PsN's [`tool::sse`](https://github.com/UUPharmacomet
 - Distribution-based PPE fit and bootstrap: [`ppeSummary()`, `.ppeChiSquareMle()`,
   `.ppeParametricBootstrap()`](../R/sse-ppe.R)
 - PPE adequacy diagnostics: [`plotSSEPpeDiagnostics()`, `.ppeCramerVonMises()`](../R/plot-sse-ppe-diagnostics.R)
-- Proportional-scaling validation: [`validateSSEPpeScaling()`](../R/sse-ppe-validation.R)
+- Proportional-scaling exploratory diagnostic: [`validateSSEPpeScaling()`](../R/sse-ppe-validation.R)
 - Covariance-draw adequacy diagnostics: [`parameterDrawSummary()`](../R/sse-parameter-diagnostics.R)
   and [`plotSSEParameterDraws()`](../R/plot-sse-parameter-draws.R)
 - Plot data and public graphics: [`R/plot-sse.R`](../R/plot-sse.R)
