@@ -22,12 +22,14 @@
 #' recovery) by direct maximisation of the unconditional noncentral
 #' chi-square log-likelihood.
 #'
-#' The fit deliberately does NOT renormalise for the truncation: since
-#' `P(X > 0) = 1` under the noncentral chi-square, every discarded value is
-#' one the model says cannot occur, so the estimate is mildly biased upward.
-#' This matches the published method (PsN); the mitigation is disclosure, not
-#' correction -- `nNonPositive` is always reported alongside `estimate`, see
-#' `.ppeApplyNonpositivePolicy()`.
+#' `P(X > 0) = 1` under the noncentral chi-square, so this is a selection,
+#' not a truncation: there is no missing normalization constant to restore.
+#' Every discarded value is one the fitted family says cannot occur, so
+#' retaining only positives makes this a selected-subset fit; its bias, if
+#' any, depends on why those values occurred and is not knowably signed by
+#' this fact alone. This matches the published method (PsN); the mitigation
+#' is disclosure, not correction -- `nNonPositive` is always reported
+#' alongside `estimate`, see `.ppeApplyNonpositivePolicy()`.
 #'
 #' A retained mean below `df` is a legitimate outcome: the constrained MLE
 #' sits at its lower bound (`boundary = TRUE`, `estimate` effectively `0`,
@@ -70,9 +72,12 @@
   }
 
   # PsN and Ueckert (2016) fit the unconditional noncentral chi-square density
-  # to the retained values. P(X > 0) = 1 under that model, so the discarded
-  # values are ones it says cannot occur; the fit is therefore mildly biased
-  # upward and the discarded count must always be reported alongside it.
+  # to the retained values. P(X > 0) = 1 under that model, so f(x | X > 0) =
+  # f(x) exactly -- there is no truncation-renormalization issue. The
+  # discarded values are ones the model says cannot occur, so retaining only
+  # positives is a selection, not a truncation correction; the discarded
+  # count must always be reported alongside the fit (see
+  # .ppeApplyNonpositivePolicy()) so the exclusion is auditable.
   objective <- if (estimate_ncp) {
     function(par) -sum(stats::dchisq(retained, df = df, ncp = par, log = TRUE))
   } else {
@@ -140,7 +145,7 @@
       "{cli::qty(nNonPositive)}{?is/are} not positive."
     ),
     "i" = "The noncentral chi-square has no support there, so they are excluded from the fit.",
-    "i" = "The estimate is biased upward when this fraction is large."
+    "i" = "This makes the fit a selected-subset estimator; its bias is not knowably signed by this fact alone."
   )
   switch(policy,
     error = cli::cli_abort(msg),

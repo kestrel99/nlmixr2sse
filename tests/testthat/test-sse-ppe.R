@@ -64,6 +64,19 @@ test_that("the nonpositive policy controls warning and abort, never the counts",
   expect_silent(.ppeApplyNonpositivePolicy(2L, 5L, "drop"))
 })
 
+test_that("the nonpositive-policy warning does not claim a knowable bias direction", {
+  # Regression test for the false "biased upward" truncation-renormalization
+  # claim: P(X > 0) = 1 for a noncentral chi-square, so there is no missing
+  # normalization constant, and the exclusion's bias direction is not
+  # knowable from that fact alone.
+  msg <- tryCatch(
+    { .ppeApplyNonpositivePolicy(2L, 5L, "warn"); NA_character_ },
+    warning = function(w) conditionMessage(w)
+  )
+  expect_false(grepl("biased upward", msg, fixed = TRUE))
+  expect_true(grepl("selected-subset|selection", msg))
+})
+
 # --- .ppePowerPlotData(method = "distribution_mle") ---------------------
 
 test_that("the fitted noncentrality does not depend on the threshold, unlike exceedance", {

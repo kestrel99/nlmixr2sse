@@ -515,16 +515,22 @@ above) -- replacing the threshold-specific exceedance inversion this section
 previously described, which fit a separate effective noncentrality at every
 threshold and could imply a different effect size at each one.
 
-**The fit is truncated, not renormalized, and is biased upward as a result.**
-Only \(T_i>0\) are retained -- a noncentral chi-square cannot produce a
-non-positive value -- but the fit uses the *unconditional* noncentral
-chi-square density over that retained set, rather than a density
-renormalized for the truncation. The excluded count is always reported
+**Only positive test statistics are used, and this is a selection, not a
+truncation, correction.** A noncentral chi-square with `df > 0` has
+\(P(X>0)=1\), so \(f(x\mid X>0)=f(x)\) for \(x>0\) exactly -- there is no
+missing normalization constant to restore. Observed \(T_i\le 0\) are
+therefore impossible under the fitted family; PPE excludes them
 (`ppeSummary()`'s `n_nonpositive`; `plotSSEPpePower()` warns unless
-`nonpositivePolicy = "drop"`), so the bias is auditable, never silent -- but
-it is not corrected. Fitting a renormalized conditional likelihood would
-remove it and is a deliberate, documented non-goal of this package; this is
-a genuine divergence from an idealized MLE, not an oversight.
+`nonpositivePolicy = "drop"`), so the exclusion is auditable, never silent.
+If a nonpositive \(T_i\) reflects real finite-sample behavior the assumed
+asymptotic distribution does not capture -- rather than pure numerical
+noise -- discarding it makes the fit a selected-subset estimator, and its
+bias is not knowably signed or magnitude from this fact alone: it depends
+on why those values occurred and whether that reason correlates with the
+true noncentrality. Correcting for it would require modeling the excluded
+observations directly -- a point-mass/mixture, censoring, or an explicit
+failure mechanism -- not renormalizing the same chi-square density; this
+package does not attempt that and reports the exclusion count instead.
 
 **The constrained MLE can sit at its lower bound.** When the retained sample
 mean falls below `df`, no interior noncentrality maximizes the likelihood,
