@@ -88,11 +88,14 @@ Plot PPE power-versus-sample-size curves
 \section{Limitations}{
 
 \code{method = "distribution_mle"} fits the UNCONDITIONAL noncentral
-chi-square density to only the RETAINED (positive) test statistics,
-excluding the rest -- it does not renormalize for that truncation, so the
-fit is biased upward whenever non-positive statistics are common (the
-excluded count is always reported so this is auditable, not hidden; see
-\code{ppeSummary()}'s \code{n}/\code{n_nonpositive} columns).
+chi-square density to only the RETAINED (positive) test statistics. A
+noncentral chi-square with \code{df > 0} has \code{P(X > 0) = 1}, so this is a
+selection, not a truncation needing renormalization -- there is no
+missing normalization constant to restore. Observed non-positive test
+statistics are impossible under the fitted family; excluding them makes
+the fit a selected-subset estimator whose bias is not knowably signed by
+that fact alone (the excluded count is always reported so this is
+auditable, not hidden; see \code{ppeSummary()}'s \code{n}/\code{n_nonpositive} columns).
 
 The \code{power_lower}/\code{power_upper} ribbon (and \code{ppeSummary()}'s bootstrap
 interval) is a parametric bootstrap under the FITTED model
@@ -103,9 +106,11 @@ is not. It is not a statement about model misspecification.
 Extrapolating the curve to a study size that was never directly simulated
 assumes the noncentrality scales linearly with size,
 \eqn{\lambda(n) = \lambda_0 n / n_0}. This is an assumption, not something
-this function verifies -- test it directly with \code{validateSSEPpeScaling()}
-across runs simulated at more than one study size before trusting an
-extrapolated value.
+this function verifies. \code{validateSSEPpeScaling()} provides an exploratory
+consistency diagnostic (not a calibrated test) across runs simulated at
+more than one study size; use it before trusting an extrapolated value,
+but its \code{nonlinear = FALSE} means inconsistency was not detected, not
+that proportional scaling is confirmed.
 
 Building an \code{sseComparison()} does not, by itself, prove the two named
 models are nested or that their OFVs are on a comparable scale -- that is

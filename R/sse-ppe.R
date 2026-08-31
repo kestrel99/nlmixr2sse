@@ -163,11 +163,12 @@
 #
 # This is explicitly `interval_type = "model_based"`, never "empirical":
 # `rchisq()` draws are strictly positive, so no replicate can ever reproduce
-# the truncation the REAL data underwent (retaining only test statistics
-# `> 0`; see `.ppeChiSquareMle()`'s header). The interval therefore covers
-# estimator variability under the fitted model only -- never model
-# misspecification, and never the truncation bias `.ppeChiSquareMle()`
-# already documents as mild and upward. Keep this distinction in naming,
+# the exclusion of non-positive values the REAL data underwent (retaining
+# only test statistics `> 0`; see `.ppeChiSquareMle()`'s header). The
+# interval therefore covers estimator variability under the fitted model
+# only -- never model misspecification, and never the selection bias from
+# excluded non-positive values that `.ppeChiSquareMle()` already documents
+# as not knowably signed. Keep this distinction in naming,
 # comments, and user-facing docs; do not let "model_based" drift into
 # "empirical" anywhere downstream.
 

@@ -102,7 +102,7 @@
       refit_df <- if (identical(target, "ncp")) df else refit
       # draw[draw > 0]: refit statistics are drawn from rchisq(), which is
       # strictly positive with probability 1, so this mirrors (but does not
-      # rely on) .ppeChiSquareMle()'s own retained-values truncation.
+      # rely on) .ppeChiSquareMle()'s own positive-only retention.
       .ppeCramerVonMises(draw[draw > 0], df = refit_df, ncp = refit_ncp, target = target)
     }, numeric(1))
   })

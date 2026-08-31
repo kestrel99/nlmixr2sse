@@ -623,9 +623,10 @@ misspecification.** `ppeSummary()`'s `ci_lower`/`ci_upper`
 reported as `interval_type = "model_based"`, never `"empirical"`: it draws
 synthetic samples from the FITTED noncentral chi-square via `rchisq()`,
 which is strictly positive by construction, so no bootstrap replicate can
-reproduce the truncation the real data underwent. The interval answers "how
-much would this estimate vary if the fitted model were exactly right and I
-reran the bootstrap," not "is the fitted model right."
+reproduce the exclusion of non-positive values the real data underwent. The
+interval answers "how much would this estimate vary if the fitted model
+were exactly right and I reran the bootstrap," not "is the fitted model
+right."
 
 **Extrapolation to an unstudied sample size assumes linear scaling,
 \(\lambda(n)=\lambda_0n/n_0\).** This is an assumption the package does not

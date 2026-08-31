@@ -2,7 +2,7 @@
 % Please edit documentation in R/sse-comparison-summary.R
 \name{comparisonSummary}
 \alias{comparisonSummary}
-\title{Empirical operating characteristics for explicit comparisons}
+\title{Paired-evaluable conditional rejection rate for explicit comparisons}
 \usage{
 comparisonSummary(
   x,
@@ -31,7 +31,7 @@ be paired evaluable before a low-yield warning is issued.}
 A \code{data.frame} with one row per comparison.
 }
 \description{
-Computes paired-evaluable empirical power/Type-I summaries for one or more
+Computes a paired-evaluable rejection rate for one or more
 \code{\link[=sseComparison]{sseComparison()}}s: for each comparison, the test statistic
 \code{T = OFV_reduced - OFV_full} is computed per replicate, and a replicate
 only counts toward the denominator if both models produced a finite,
@@ -42,6 +42,28 @@ the model-based (parametric bootstrap) uncertainty computed elsewhere,
 hence \code{interval_type} and the \code{mcse_probability} naming.
 }
 \details{
+The reported \code{probability} is the \strong{paired-evaluable conditional
+rejection probability},
+\verb{P(T > criticalValue | both models produced a finite, accepted OFV)} --
+not the unconditional rejection probability over every attempted
+replicate. \code{n_paired_evaluable} (not \code{n_attempted}) is the denominator;
+\code{n_excluded} counts replicates dropped because either fit failed or was
+filtered out. If convergence or filtering depends on the simulated data,
+the model, or the test statistic itself, that exclusion is informative
+and the conditional rate can diverge from the unconditional one even when
+the paired-evaluable fraction is high -- the \code{minPairedFraction} warning
+only bounds how small that fraction is allowed to get, not how biased the
+conditional rate can be at a given fraction. The unconditional design
+operating characteristic is not identified without an explicit policy for
+what an unpaired replicate should count as; when failures are
+non-negligible, treat this rate as one input to a sensitivity analysis
+under multiple failure policies, not as a final answer on its own.
+Likewise \code{ci_lower}/\code{ci_upper} is an interval for the conditional
+Bernoulli rate among retained pairs only -- it does not incorporate
+uncertainty from the excluded replicates. Reserve "empirical power" and
+"empirical Type I error" for contexts where this complete-case
+conditioning has been checked and is acceptable.
+
 \code{mcse_probability} collapses to exactly 0 when \code{probability} is 0 or 1 --
 precisely where the Clopper-Pearson interval is widest. At those
 boundaries the interval (\code{ci_lower}/\code{ci_upper}), not \code{mcse_probability},
