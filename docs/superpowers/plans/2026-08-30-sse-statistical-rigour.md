@@ -1895,6 +1895,16 @@ git commit -m "feat: correctly named Monte Carlo uncertainty for parameter summa
 
 ## Task 10: Parameter-draw adequacy summaries
 
+> **Post-implementation gap note:** As originally written, this task's Steps
+> 1-5 specified only `parameterDrawSummary()` (the tabular diagnostic) and
+> were implemented and reviewed as such (commits `a25631e`, `0569ac4`). Task
+> 11 Step 3's expected NAMESPACE diff and the Definition of Done (#6) both
+> assume a companion `plotSSEParameterDraws()` visual diagnostic also exists
+> — an omission in this task's original text, discovered only when starting
+> Task 11. Per user decision, `plotSSEParameterDraws()` is added as an
+> explicit follow-up sub-task (Task 10b, below) before Task 11 begins, rather
+> than trimming Task 11's expectations down to match what already exists.
+
 **Files:**
 - Create: `R/sse-parameter-diagnostics.R`, `tests/testthat/test-sse-parameter-diagnostics.R`
 - Modify: `R/run-sse.R`, `R/sse-methods.R`, `NAMESPACE`, `tests/testthat/helper-ppe-fixtures.R`, `_pkgdown.yml`
@@ -2024,6 +2034,57 @@ prespecified actionable conditions; always retain the full table.
 git add R/sse-parameter-diagnostics.R tests/testthat/test-sse-parameter-diagnostics.R R/run-sse.R R/sse-methods.R NAMESPACE _pkgdown.yml
 git commit -m "feat: parameter-draw adequacy summaries"
 ```
+
+---
+
+## Task 10b: Parameter-draw adequacy plot (`plotSSEParameterDraws()`)
+
+**Added after the fact** (see the gap note under Task 10): Task 11 Step 3's
+NAMESPACE check and the Definition of Done (#6) both assume a visual
+counterpart to `parameterDrawSummary()` exists, mirroring every other
+Summary/Plot pair in this package (`ppeSummary()`/`plotSSEPpePower()`,
+`comparisonSummary()`/no plot needed there since it's just a table, but
+`plotSSEPpeDiagnostics()` alongside `ppeSummary()`). This task adds it.
+
+**Files:**
+- Create: `R/plot-sse-parameter-draws.R`, `tests/testthat/test-plot-sse-parameter-draws.R`
+- Modify: `NAMESPACE`, `_pkgdown.yml`
+
+**Design, modeled on `plotSSEPpeDiagnostics()` (`R/plot-sse-ppe-diagnostics.R`)**:
+one panel per drawn parameter (theta or omega), each showing a histogram or
+density of that parameter's realized replicate draws (from `x$initialValues`)
+with a vertical reference line at its `target_mean` (from
+`parameterDrawSummary(x)`). Facet by parameter via `ggplot2::facet_wrap(scales
+= "free")` — unlike `plotSSEPpeDiagnostics()`, this does not need `patchwork`
+side-by-side panels (there is only one plot type here, not an ECDF+QQ pair),
+so a plain faceted `ggplot` is enough; only pull in `patchwork` if a genuine
+design need for it emerges. Attach `parameterDrawSummary(x)`'s table as a
+`"parameterDrawSummary"` attribute on the returned plot, mirroring the
+`"ppeDiagnostics"`-attribute pattern, so the numeric diagnostic is always
+available without reading pixels. Require `x` be a completed, covariance-mode
+`nlmixr2SSE` object (same gate `parameterDrawSummary()` itself already
+enforces — delegate to it rather than re-validating). `@export` with full
+roxygen docs matching this package's house style.
+
+- [ ] **Step 1: Write the failing tests**
+
+Cover at minimum: the plot is a `ggplot`; it facets one panel per drawn
+parameter; the `"parameterDrawSummary"` attribute is present and equals
+`parameterDrawSummary(x)`; it refuses a non-covariance-mode run with the same
+message `parameterDrawSummary()` gives (reuse `fake_draw_sse_object()`/
+`fake_ppe_sse_object()` from `tests/testthat/helper-ppe-fixtures.R`).
+
+- [ ] **Step 2: Run to verify failure**
+
+Expected: FAIL, `could not find function "plotSSEParameterDraws"`.
+
+- [ ] **Step 3: Implement, document, run full suite, self-review, commit**
+
+Run `devtools::document()`, add `plotSSEParameterDraws` to `_pkgdown.yml`
+under the "Parameter-draw diagnostics" section (alongside
+`parameterDrawSummary`), add a `NEWS.md` entry. Run the full suite. Stage
+exactly the touched files and commit
+(`git commit -m "feat: parameter-draw adequacy plot"`).
 
 ---
 
