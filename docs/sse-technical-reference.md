@@ -494,7 +494,7 @@ to estimate the actual Type I error of a proposed decision rule in that case.
 built, `nlmixr2sse` falls back to inferring one comparison per alternative
 model, with `df` taken from the parameter-count fallback described under
 [Parametric power estimation](#parametric-power-estimation) below
-(`dfSource = "parameter_count"`), and a warning that this is a convenience,
+(reported as `df_source = "parameter_count"`), and a warning that this is a convenience,
 not an assertion of correctness. The original `mean_delta_ofv`/
 `pct_delta_above`/`pct_delta_below` fields, keyed by
 \(\Delta_i=\operatorname{OFV}_{\mathrm{reference},i}-\operatorname{OFV}_{\mathrm{alternative},i}\)
@@ -588,7 +588,7 @@ explicit comparison is built, the fallback is
 \]
 
 where each \(p\) is the number of schema THETA, OMEGA, and SIGMA columns,
-marked `dfSource = "parameter_count"` and, under PPE, accompanied by a
+reported as `df_source = "parameter_count"` and, under PPE, accompanied by a
 warning that this is a convenience, not an assertion of correctness -- it
 can be wrong for fixed, constrained, boundary, or non-nested hypotheses.
 

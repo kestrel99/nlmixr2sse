@@ -181,11 +181,17 @@ model's OFV is worse than the threshold by chance. Common reference thresholds
 read at any threshold gives the empirical power at that significance level.
 
 **`plotSSEPpePower(sse)`** — Parametric power estimation (PPE): extrapolates
-the empirical power to other study sizes by scaling the estimated non-centrality
-parameter. The shaded ribbon is a Monte Carlo confidence interval derived from
-the binomial uncertainty around the observed detection rate. Use this to read
-off the sample size required to reach a target power (e.g., 80 %) for each
-tested threshold.
+power to other study sizes by scaling an estimated non-centrality parameter.
+Defaults to `method = "distribution_mle"`: one non-centrality per
+`sseComparison()`, fit by maximum likelihood to the whole retained
+test-statistic distribution (Ueckert, Karlsson & Hooker 2016, the method
+PsN implements); the shaded ribbon is a parametric-bootstrap interval under
+the fitted model (`ppeSummary()` gives the same estimate as a table, and
+`plotSSEPpeDiagnostics()` checks how well the fit actually describes the
+data). The previous per-threshold estimator is still available as
+`method = "exceedance"`, whose ribbon is a Monte Carlo confidence interval
+from the binomial uncertainty around the observed detection rate. Use either
+to read off the sample size required to reach a target power (e.g., 80 %).
 
 **`plot(sse, type = "diagnostics")`** — Side-by-side four-panel view combining
 parameter bias, replicate estimates, OFV distribution, and power curve. Useful
