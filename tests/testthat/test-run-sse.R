@@ -947,6 +947,44 @@ test_that("runSSE supports raw-results and covariance parameter sources end to e
     )
   )
   expect_equal(reloaded$parameterDrawSummary, cov_res$parameterDrawSummary)
+
+  # Whole-branch review finding: recomputeSSE() shared .computeSSEOutputs()/
+  # .writeSseSummary() with runSSE() but never learned about the later
+  # parameterDrawSummary precompute -- both call sites silently defaulted to
+  # .emptyParameterDrawSummary(), and with overwrite = TRUE that PERMANENTLY
+  # replaced the real on-disk sse_summary.rds table with an empty one. Cover
+  # both the non-destructive (default) and destructive (overwrite = TRUE)
+  # recompute paths against the same real covariance-mode run used above.
+  recomputed <- suppressMessages(recomputeSSE(cov_out, samples = 2L))
+  expect_true(is.data.frame(recomputed$parameterDrawSummary))
+  expect_equal(nrow(recomputed$parameterDrawSummary), nrow(cov_res$parameterDrawSummary))
+  expect_setequal(
+    recomputed$parameterDrawSummary$parameter,
+    cov_res$parameterDrawSummary$parameter
+  )
+
+  recomputed_overwrite <- suppressMessages(
+    recomputeSSE(cov_out, samples = 2L, overwrite = TRUE)
+  )
+  expect_true(is.data.frame(recomputed_overwrite$parameterDrawSummary))
+  expect_gt(nrow(recomputed_overwrite$parameterDrawSummary), 0L)
+  # The overwritten sse_summary.rds must carry the real table too, not the
+  # empty default -- reload from disk via runSSE()'s completed-run short
+  # circuit rather than trusting the in-memory return value alone.
+  reloaded_after_overwrite <- suppressMessages(
+    runSSE(
+      ref_fit,
+      alternativeModels = sseModel(alt_fit, label = "no_eta"),
+      samples = 2L,
+      seed = 456,
+      control = runSSEControl(parameterSource = "covariance", workers = 1L),
+      outputDir = cov_out
+    )
+  )
+  expect_equal(
+    reloaded_after_overwrite$parameterDrawSummary,
+    recomputed_overwrite$parameterDrawSummary
+  )
 })
 
 test_that("a parameterDrawSummary() failure during runSSE() warns and falls back to an empty table, never failing the run", {

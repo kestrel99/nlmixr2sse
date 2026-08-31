@@ -453,12 +453,37 @@
     initialWide = initialWide
   )
 
+  initial_values <- .wideToLongValues(initialWide)
+
+  # Mirrors runSSE()'s precompute (R/run-sse.R): a completed covariance-mode
+  # run's parameter-draw adequacy diagnostic must survive recomputation too,
+  # not silently reset to empty -- recomputeSSE() rebuilds parameterSummary/
+  # ofvSummary from the SAME saved initialValues, so parameterDrawSummary
+  # (which only depends on runInfo$parameterSourceInfo and initialValues,
+  # neither of which recomputeSSE() changes) is unaffected by outFilter/
+  # refOfv/samples and should simply be recomputed alongside them.
+  draw_summary <- if (identical(runInfo$parameterSource, "covariance")) {
+    tryCatch(
+      .parameterDrawSummaryCore(runInfo, initial_values),
+      error = function(e) {
+        cli::cli_warn(c(
+          "!" = "Could not compute the parameter-draw adequacy summary: {conditionMessage(e)}",
+          "i" = "{.fn parameterDrawSummary} can be retried manually on the returned object."
+        ))
+        .emptyParameterDrawSummary()
+      }
+    )
+  } else {
+    .emptyParameterDrawSummary()
+  }
+
   list(
     referenceValues = .wideToReferenceValues(initialWide),
-    initialValues = .wideToLongValues(initialWide),
+    initialValues = initial_values,
     parameterSummary = parameter_summary,
     ofvSummary = ofv_summary,
-    powerSummary = ofv_summary[!is.na(ofv_summary$direction) & ofv_summary$direction == "power", , drop = FALSE]
+    powerSummary = ofv_summary[!is.na(ofv_summary$direction) & ofv_summary$direction == "power", , drop = FALSE],
+    parameterDrawSummary = draw_summary
   )
 }
 
@@ -478,7 +503,8 @@
       parameterSummary = outputs$parameterSummary,
       ofvSummary = outputs$ofvSummary,
       dir = dir,
-      basename = "sse_summary"
+      basename = "sse_summary",
+      parameterDrawSummary = outputs$parameterDrawSummary
     )
     return(list(
       resultsBasename = "sse_results",
@@ -498,7 +524,8 @@
     parameterSummary = outputs$parameterSummary,
     ofvSummary = outputs$ofvSummary,
     dir = dir,
-    basename = summary_basename
+    basename = summary_basename,
+    parameterDrawSummary = outputs$parameterDrawSummary
   )
   list(
     resultsBasename = results_basename,
@@ -620,6 +647,7 @@ recomputeSSE <- function(
     initialValues = outputs$initialValues,
     parameterSummary = outputs$parameterSummary,
     ofvSummary = outputs$ofvSummary,
-    powerSummary = outputs$powerSummary
+    powerSummary = outputs$powerSummary,
+    parameterDrawSummary = outputs$parameterDrawSummary
   )
 }
