@@ -158,6 +158,49 @@ test_that("varying-truth runs no longer suppress MCSE fields in the long-form ta
   expect_false(is.na(value_of("mcse_bias")))
 })
 
+test_that("infinite estimates and truths are excluded from summaries, not just NA ones", {
+  raw_results <- data.frame(
+    sample = 1:5,
+    model_label = "ref_fit",
+    role = "simulation",
+    error_message = NA_character_,
+    tka = c(9, 11, Inf, 8, 12),
+    check.names = FALSE,
+    stringsAsFactors = FALSE
+  )
+  attr(raw_results, "rawResultsHeader") <- list(
+    schema_version = 1L,
+    columns = names(raw_results),
+    base_cols = names(raw_results),
+    theta_cols = "tka",
+    omega_cols = character(0),
+    sigma_cols = character(0),
+    se_cols = character(0),
+    parameter_cols = "tka"
+  )
+  initial_wide <- data.frame(
+    sample = 1:5,
+    tka = rep(10, 5),
+    check.names = FALSE,
+    stringsAsFactors = FALSE
+  )
+  spec_map <- list(ref_fit = list(
+    thetaCols = "tka", omegaCols = character(0), sigmaCols = character(0)
+  ))
+
+  summary_tbl <- .computeParameterSummary(
+    rawResults = raw_results, initialWide = initial_wide, specMap = spec_map
+  )
+  value_of <- function(stat) {
+    subset(summary_tbl, parameter == "tka" & statistic == stat)$value
+  }
+
+  finite_only <- c(9, 11, 8, 12)
+  expect_equal(value_of("mean"), mean(finite_only))
+  expect_equal(value_of("bias"), mean(finite_only - 10))
+  expect_equal(value_of("n_effective"), 4)
+})
+
 test_that("the long-format table applies the percentage scaling exactly once, to exactly the relative fields", {
   # .parameterSummaryRow() itself returns fractional (0-1) values; the
   # integration point in .singleParameterSummary() multiplies only the

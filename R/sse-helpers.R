@@ -2052,7 +2052,7 @@
     return(list(values = stats, n = ns))
   }
 
-  estimate_ok <- !is.na(estimates)
+  estimate_ok <- is.finite(estimates)
   est <- estimates[estimate_ok]
 
   basic_n <- length(est)
@@ -2075,7 +2075,7 @@
     )] <- basic_n
   }
 
-  pair_ok <- estimate_ok & !is.na(truth)
+  pair_ok <- estimate_ok & is.finite(truth)
   est_pair <- estimates[pair_ok]
   true_pair <- truth[pair_ok]
   pair_n <- length(est_pair)

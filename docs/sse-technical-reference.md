@@ -399,8 +399,9 @@ used by `nlmixr2utils`, including named THETAs and matrix-coordinate OMEGA/SIGMA
 labels. A model without a parameter receives `matched = FALSE`, `NA` statistics,
 and effective count zero for that parameter.
 
-For valid estimates \(\widehat x_i\) and matched truths \(x_i\), the principal
-statistics are:
+For finite estimates \(\widehat x_i\) and finite matched truths \(x_i\)
+(infinite or `NaN` values are excluded, not merely `NA` ones), the
+principal statistics are:
 
 \[
 \begin{aligned}
@@ -415,8 +416,10 @@ statistics are:
 \end{aligned}
 \]
 
-Rows with missing estimates or truths are omitted pairwise. Relative statistics
-also omit replicates whose truth is zero. Mean, median, sample SD, minimum,
+Rows with a missing, infinite, or `NaN` estimate or truth are omitted
+pairwise, so a non-finite value cannot silently propagate into a mean, bias,
+RMSE, or spread statistic. Relative statistics also omit replicates whose
+truth is zero. Mean, median, sample SD, minimum,
 maximum, bias-corrected sample skewness, and excess kurtosis are reported.
 Every long-form statistic has its own `n_effective`.
 
