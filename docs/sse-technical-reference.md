@@ -410,30 +410,38 @@ Every long-form statistic has its own `n_effective`.
 
 **`mcse_relative_bias`** (the statistic named `rse` in earlier releases, still
 present as a superseded alias for one release) is the Monte Carlo standard
-error of relative bias -- not a model-fit parameter RSE:
+error of relative bias -- not a model-fit parameter RSE. For matched
+replicate-level errors \(e_i=\widehat x_i-x_i\) and relative errors
+\(r_i=e_i/x_i\),
 
 \[
-  100\,\frac{\operatorname{SD}(\widehat x-x_0)}{|x_0|\sqrt N}
-  \;=\;100\,\frac{\operatorname{SD}(\widehat x)}{|x_0|\sqrt N},
+  \operatorname{mcse\_bias} = \frac{\operatorname{SD}(e_i)}{\sqrt N},
+  \qquad
+  \operatorname{mcse\_relative\_bias} = 100\,\frac{\operatorname{SD}(r_i)}{\sqrt N},
 \]
 
-calculated only when every matched truth equals the same finite \(x_0\)
-(`n_effective_relative = 0` and the value is `NA` when \(x_0=0\), since
-relative error is undefined at a zero truth). Computed via `SD` of the
-replicate-level errors and an absolute value on \(x_0\), it is always
-nonnegative, including for a negative fixed truth -- unlike the original
-`rse` formula, which divided by \(x_0\) directly and could come out negative
-in that case. **`mcse_bias`** is its absolute-scale counterpart, valid even
-when \(x_0=0\) (bias itself is well-defined there; only the relative
-version is not). `ci_bias_lower`/`ci_bias_upper` and
+computed from the paired replicate-level errors regardless of whether the
+matched truth \(x_i\) is the same value across every replicate or varies by
+replicate (as for `rawres` or covariance-mode runs) -- no single \(x_0\) is
+required. `n_effective_relative` excludes replicates whose truth is zero or
+non-finite (relative error is undefined there); `mcse_bias`/`n_effective`
+carry no such restriction, since bias itself is well-defined even at a zero
+truth. When every matched truth happens to equal the same finite \(x_0\),
+this reduces to the constant-truth special case
+\(100\operatorname{SD}(\widehat x)/(|x_0|\sqrt N)\); both statistics are
+always nonnegative by construction (an `SD`), unlike the original `rse`
+formula, which divided by \(x_0\) directly and could come out negative for
+a negative fixed truth. `ci_bias_lower`/`ci_bias_upper` and
 `ci_relative_bias_lower`/`ci_relative_bias_upper` are normal-approximation
 95% intervals formed as bias (respectively relative bias) plus/minus
 `1.96 * mcse_*`, emitted only when at least 2 replicates contributed and the
 corresponding MCSE is finite and positive; otherwise the bounds are `NA`
 with the replicate count still reported via `n_effective`/
 `n_effective_relative`. These fields (like the original `rse`-derived
-`ci_0.5`...`ci_99.5`, still reported unchanged) are unavailable for
-varying-truth `rawres` and covariance runs, where no single \(x_0\) applies.
+`ci_0.5`...`ci_99.5`, still reported unchanged) are computed from the
+paired replicate-level errors and are therefore well-defined for
+varying-truth `rawres` and covariance runs too, where each replicate has
+its own \(x_i\); no single \(x_0\) applies or is required.
 
 ## OFV differences, empirical power, and Type I error
 

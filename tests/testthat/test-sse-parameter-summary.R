@@ -98,6 +98,66 @@ test_that("rse is a superseded alias equal to mcse_relative_bias, not the old si
   expect_equal(rse_row$value, mcse_row$value)
 })
 
+test_that(".parameterSummaryRow accepts a per-replicate truth vector", {
+  estimates <- c(9, 12, 21, 28)
+  truth <- c(10, 10, 20, 20)
+  errors <- estimates - truth
+  rel_errors <- errors / truth
+
+  s <- .parameterSummaryRow(estimates, truth)
+
+  expect_equal(s$mcse_bias, stats::sd(errors) / sqrt(4))
+  expect_equal(s$mcse_relative_bias, stats::sd(rel_errors) / sqrt(4))
+  expect_equal(s$n_effective, 4L)
+  expect_equal(s$n_effective_relative, 4L)
+})
+
+test_that("varying-truth runs no longer suppress MCSE fields in the long-form table", {
+  # A rawres/covariance-style run: truth varies by replicate. Before this
+  # fix, .singleParameterSummary()'s length(unique(true_pair)) == 1L gate
+  # made every mcse_*/ci_*_bias_* field NA here, even though they are
+  # well-defined from the paired replicate-level errors.
+  raw_results <- data.frame(
+    sample = 1:4,
+    model_label = "ref_fit",
+    role = "simulation",
+    error_message = NA_character_,
+    tka = c(9, 12, 21, 28),
+    check.names = FALSE,
+    stringsAsFactors = FALSE
+  )
+  attr(raw_results, "rawResultsHeader") <- list(
+    schema_version = 1L,
+    columns = names(raw_results),
+    base_cols = names(raw_results),
+    theta_cols = "tka",
+    omega_cols = character(0),
+    sigma_cols = character(0),
+    se_cols = character(0),
+    parameter_cols = "tka"
+  )
+  initial_wide <- data.frame(
+    sample = 1:4,
+    tka = c(10, 10, 20, 20),
+    check.names = FALSE,
+    stringsAsFactors = FALSE
+  )
+  spec_map <- list(ref_fit = list(
+    thetaCols = "tka", omegaCols = character(0), sigmaCols = character(0)
+  ))
+
+  summary_tbl <- .computeParameterSummary(
+    rawResults = raw_results, initialWide = initial_wide, specMap = spec_map
+  )
+  value_of <- function(stat) {
+    subset(summary_tbl, parameter == "tka" & statistic == stat)$value
+  }
+
+  errors <- c(9, 12, 21, 28) - c(10, 10, 20, 20)
+  expect_equal(value_of("mcse_bias"), stats::sd(errors) / sqrt(4))
+  expect_false(is.na(value_of("mcse_bias")))
+})
+
 test_that("the long-format table applies the percentage scaling exactly once, to exactly the relative fields", {
   # .parameterSummaryRow() itself returns fractional (0-1) values; the
   # integration point in .singleParameterSummary() multiplies only the

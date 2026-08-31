@@ -258,7 +258,15 @@ test_that("ui parameter updates separate free from fixed estimates", {
   )
 })
 
-test_that("parameter summary computes RSE only for constant truths", {
+test_that("parameter summary computes RSE for varying truths too", {
+  # Previously RSE (and mcse_bias/mcse_relative_bias) were suppressed to NA
+  # whenever truth varied by replicate (as tka does here: 0.50, 0.70) --
+  # length(unique(true_pair)) == 1L gated the whole MCSE block. That
+  # restriction was an implementation limitation, not a mathematical
+  # necessity: the MCSE is well-defined from the paired replicate-level
+  # errors regardless of whether truth is constant (see
+  # .parameterSummaryRow()). Both tka (varying truth) and
+  # omega(eta.ka,eta.ka) (constant truth) should now report a finite value.
   raw_results <- data.frame(
     source = rep("sse", 2L),
     hypothesis = rep("simulation", 2L),
@@ -315,7 +323,7 @@ test_that("parameter summary computes RSE only for constant truths", {
     parameter == "omega(eta.ka,eta.ka)" & statistic == "rse"
   )
 
-  expect_equal(theta_rse$value, NA_real_)
+  expect_equal(is.finite(theta_rse$value), TRUE)
   expect_equal(is.finite(omega_rse$value), TRUE)
 })
 

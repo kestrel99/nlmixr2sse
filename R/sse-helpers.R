@@ -1990,11 +1990,14 @@
 # which may include values that later turned out non-finite once combined
 # with `truth`.
 #
-# `truth` is a single scalar: this is the value the pair check upstream
-# (`.singleParameterSummary()`) has already confirmed is constant across the
-# replicate set. A zero or non-finite truth makes "relative" error undefined,
-# so the relative fields come back NA with n_effective_relative = 0L rather
-# than divide by zero or propagate Inf/NaN silently.
+# `truth` may be a scalar (recycled) or a vector the same length as
+# `estimates` (one truth per matched replicate, as for `parameterSource =
+# "rawres"` or `"covariance"`, where each replicate's simulation truth can
+# differ) -- both cases are handled by the same elementwise arithmetic below.
+# A zero or non-finite truth (per-element, for the vector case) makes
+# "relative" error undefined at that replicate; such elements are excluded
+# from the relative-scale fields via the is.finite() filters below rather
+# than dividing by zero or propagating Inf/NaN silently.
 .parameterSummaryRow <- function(estimates, truth) {
   z95 <- stats::qnorm(0.975)
   ci_around <- function(center, mcse, n) {
@@ -2012,18 +2015,15 @@
   mcse_bias <- .mcseFromErrors(errors)
   bias_ci <- ci_around(bias, mcse_bias, n_effective)
 
-  relative_ok <- is.finite(truth) && truth != 0
-  if (relative_ok) {
-    rel_errors <- errors / truth
-    finite_rel_errors <- rel_errors[is.finite(rel_errors)]
-    n_effective_relative <- length(finite_rel_errors)
-    relative_bias <- if (n_effective_relative > 0L) mean(finite_rel_errors) else NA_real_
-    mcse_relative_bias <- .mcseFromErrors(rel_errors)
-  } else {
-    n_effective_relative <- 0L
-    relative_bias <- NA_real_
-    mcse_relative_bias <- NA_real_
-  }
+  # Elementwise: a zero or non-finite truth at a given replicate produces a
+  # non-finite ratio there (Inf/NaN), which is.finite() filters out below --
+  # this generalizes the old scalar early-exit to a vector truth without a
+  # separate branch.
+  rel_errors <- errors / truth
+  finite_rel_errors <- rel_errors[is.finite(rel_errors)]
+  n_effective_relative <- length(finite_rel_errors)
+  relative_bias <- if (n_effective_relative > 0L) mean(finite_rel_errors) else NA_real_
+  mcse_relative_bias <- .mcseFromErrors(rel_errors)
   relative_ci <- ci_around(relative_bias, mcse_relative_bias, n_effective_relative)
 
   list(
@@ -2100,11 +2100,10 @@
     ns[c("relative_rmse", "relative_bias", "relative_absolute_bias")] <- rel_n
   }
 
-  if (
-    pair_n > 0L && all(!is.na(true_pair)) && length(unique(true_pair)) == 1L
-  ) {
-    true0 <- true_pair[[1L]]
-    row <- .parameterSummaryRow(est_pair, true0)
+  if (pair_n > 0L) {
+    # true_pair may vary by replicate (rawres/covariance draws) -- see
+    # .parameterSummaryRow()'s updated header. No single x0 is required.
+    row <- .parameterSummaryRow(est_pair, true_pair)
 
     # Absolute scale (raw units, matching `bias`): valid regardless of
     # whether true0 is zero, unlike the relative-scale fields below.
