@@ -51,10 +51,16 @@ a QQ panel), with the numeric diagnostics attached as a
 \code{"ppeDiagnostics"} attribute (one row per comparison, with \code{comparison},
 \code{parameter} (\code{"ncp"} or \code{"df"}, whichever was diagnosed), \code{estimate}
 (the fitted value of that parameter -- the value the discrepancy and
-p-value are actually about), \code{cvm}, \code{p_value}, \code{n}, \code{n_nonpositive},
-\code{df} (the comparison's declared/nominal df, kept comparable across
-power and type1 rows; for a Type-I comparison this can differ from
-\code{estimate}), and \code{df_source}) so results are auditable without reading
+p-value are actually about), \code{cvm}, \code{p_value}, \code{bootstrap_requested},
+\code{bootstrap_successful}, \code{bootstrap_failed} (a refit that errors is
+dropped from \code{p_value}'s null distribution rather than aborting the
+whole bootstrap, so \code{B} in the documented plus-one formula is
+\code{bootstrap_successful}, not \code{bootstrap_requested}, whenever any refit
+fails -- these three counts make that unambiguous), \code{n},
+\code{n_nonpositive}, \code{df} (the comparison's declared/nominal df, kept
+comparable across power and type1 rows; for a Type-I comparison this
+can differ from \code{estimate}), and \code{df_source}) so results are auditable
+without reading
 pixels.
 }
 \description{

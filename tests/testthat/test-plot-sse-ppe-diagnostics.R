@@ -62,13 +62,13 @@ test_that("the diagnostic p-value cannot be exactly zero", {
   good <- ppe_dofv(n = 200L, df = 4, ncp = 15, seed = 81L)
   fit <- .ppeChiSquareMle(good, df = 4)
 
-  p <- .ppeDiagnosticPValue(
+  res <- .ppeDiagnosticPValue(
     fit$retained, df = 4, estimate = fit$estimate, target = "ncp",
     bootstrapSamples = 20L, seed = 5L
   )
 
-  expect_gt(p, 0)
-  expect_true(p >= 1 / 21)
+  expect_gt(res$p_value, 0)
+  expect_true(res$p_value >= 1 / 21)
 })
 
 test_that("the diagnostic p-value floor is 1/(bootstrapSamples + 1), never 0", {
@@ -79,13 +79,47 @@ test_that("the diagnostic p-value floor is 1/(bootstrapSamples + 1), never 0", {
   good <- ppe_dofv(n = 400L, df = 1, ncp = 9, seed = 91L)
   fit <- .ppeChiSquareMle(good, df = 1)
 
-  p <- .ppeDiagnosticPValue(
+  res <- .ppeDiagnosticPValue(
     fit$retained, df = 1, estimate = fit$estimate, target = "ncp",
     bootstrapSamples = 10L, seed = 5L
   )
 
-  expect_equal(p * 11, round(p * 11))
-  expect_gte(p, 1 / 11)
+  expect_equal(res$p_value * 11, round(res$p_value * 11))
+  expect_gte(res$p_value, 1 / 11)
+  expect_equal(res$bootstrap_requested, 10L)
+  expect_equal(res$bootstrap_successful, 10L)
+  expect_equal(res$bootstrap_failed, 0L)
+})
+
+test_that("bootstrap_successful/failed count refit errors, not just requested samples", {
+  # df = 1000 with only 2 retained values reliably starves most refits (as
+  # .ppeParametricBootstrap()'s own "bootstrap failures are counted" test
+  # documents), producing real, non-zero failures to count. These extreme
+  # parameters also push pchisq()'s noncentral-chi-square series past its
+  # convergence tolerance when computing the observed CvM discrepancy --
+  # an unrelated numerical quirk of R's pchisq() at this extreme ncp/x
+  # combination, not something this test is checking, so it is suppressed.
+  res <- suppressWarnings(.ppeDiagnosticPValue(
+    c(1e-8, 2e-8), df = 1000, estimate = 1e10, target = "ncp",
+    bootstrapSamples = 30L, seed = 5L
+  ))
+
+  expect_equal(res$bootstrap_requested, 30L)
+  expect_equal(res$bootstrap_successful + res$bootstrap_failed, 30L)
+  expect_gt(res$bootstrap_failed, 0L)
+  expect_gt(res$bootstrap_successful, 0L)
+})
+
+test_that("a p-value of NA is reported when every bootstrap refit fails", {
+  res <- .ppeDiagnosticPValue(
+    c(1e-8, 2e-8), df = 1000, estimate = 1e10, target = "ncp",
+    bootstrapSamples = 0L, seed = 5L
+  )
+
+  expect_true(is.na(res$p_value))
+  expect_equal(res$bootstrap_requested, 0L)
+  expect_equal(res$bootstrap_successful, 0L)
+  expect_equal(res$bootstrap_failed, 0L)
 })
 
 test_that("the diagnostic p-value is small for a misspecified mixture (power)", {
@@ -93,20 +127,20 @@ test_that("the diagnostic p-value is small for a misspecified mixture (power)", 
            ppe_dofv(200L, df = 1, ncp = 30, seed = 35L))
   fit <- .ppeChiSquareMle(bad, df = 1)
 
-  p <- .ppeDiagnosticPValue(bad[bad > 0], df = 1, estimate = fit$estimate,
-                            bootstrapSamples = 200L, seed = 36L)
+  res <- .ppeDiagnosticPValue(bad[bad > 0], df = 1, estimate = fit$estimate,
+                              bootstrapSamples = 200L, seed = 36L)
 
-  expect_lt(p, 0.05)
+  expect_lt(res$p_value, 0.05)
 })
 
 test_that("the diagnostic p-value is not small when the model is correct (power)", {
   good <- ppe_dofv(n = 400L, df = 1, ncp = 9, seed = 37L)
   fit <- .ppeChiSquareMle(good, df = 1)
 
-  p <- .ppeDiagnosticPValue(good[good > 0], df = 1, estimate = fit$estimate,
-                            bootstrapSamples = 200L, seed = 38L)
+  res <- .ppeDiagnosticPValue(good[good > 0], df = 1, estimate = fit$estimate,
+                              bootstrapSamples = 200L, seed = 38L)
 
-  expect_gt(p, 0.05)
+  expect_gt(res$p_value, 0.05)
 })
 
 test_that("the diagnostic p-value is small for a misspecified mixture (type1)", {
@@ -114,20 +148,20 @@ test_that("the diagnostic p-value is small for a misspecified mixture (type1)", 
            ppe_dofv(200L, df = 10, ncp = 0, seed = 54L))
   fit <- .ppeChiSquareMle(bad, ncp = 0)
 
-  p <- .ppeDiagnosticPValue(bad[bad > 0], df = NULL, estimate = fit$estimate,
-                            target = "df", bootstrapSamples = 200L, seed = 55L)
+  res <- .ppeDiagnosticPValue(bad[bad > 0], df = NULL, estimate = fit$estimate,
+                              target = "df", bootstrapSamples = 200L, seed = 55L)
 
-  expect_lt(p, 0.05)
+  expect_lt(res$p_value, 0.05)
 })
 
 test_that("the diagnostic p-value is not small when the model is correct (type1)", {
   good <- ppe_dofv(n = 400L, df = 3, ncp = 0, seed = 51L)
   fit <- .ppeChiSquareMle(good, ncp = 0)
 
-  p <- .ppeDiagnosticPValue(good[good > 0], df = NULL, estimate = fit$estimate,
-                            target = "df", bootstrapSamples = 200L, seed = 52L)
+  res <- .ppeDiagnosticPValue(good[good > 0], df = NULL, estimate = fit$estimate,
+                              target = "df", bootstrapSamples = 200L, seed = 52L)
 
-  expect_gt(p, 0.05)
+  expect_gt(res$p_value, 0.05)
 })
 
 # ---- plotSSEPpeDiagnostics() ---------------------------------------------
@@ -142,9 +176,14 @@ test_that("plotSSEPpeDiagnostics returns a ggplot carrying auditable data", {
 
   expect_s3_class(p, "ggplot")
   diag <- attr(p, "ppeDiagnostics")
-  expect_true(all(c("comparison", "cvm", "p_value", "n", "n_nonpositive") %in%
-                    names(diag)))
+  expect_true(all(c(
+    "comparison", "cvm", "p_value",
+    "bootstrap_requested", "bootstrap_successful", "bootstrap_failed",
+    "n", "n_nonpositive"
+  ) %in% names(diag)))
   expect_equal(nrow(diag), 1L)
+  expect_equal(diag$bootstrap_requested, 50L)
+  expect_equal(diag$bootstrap_successful + diag$bootstrap_failed, 50L)
 })
 
 test_that("the diagnostic subtitle names the excluded count", {

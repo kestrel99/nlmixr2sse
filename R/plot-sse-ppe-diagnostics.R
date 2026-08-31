@@ -50,14 +50,16 @@
 #' estimate itself was fit under), recomputes the Cramer-von Mises statistic
 #' for each refit, and returns the plus-one-corrected proportion of the null
 #' (bootstrap) discrepancies at least as large as the one observed --
-#' `(1 + #{T_b >= T_obs}) / (B + 1)`, the standard Monte Carlo p-value
-#' construction, which is never exactly zero even when no bootstrap
+#' `(1 + #{T_b >= T_obs}) / (n_successful + 1)`, the standard Monte Carlo
+#' p-value construction, which is never exactly zero even when no bootstrap
 #' discrepancy reaches the observed one (the naive `mean(T_b >= T_obs)` can
 #' report an impossible exact zero with a finite bootstrap sample). A small
 #' p-value means the fitted distribution is a poor description of the real
 #' data. A refit that errors is dropped from the null distribution rather
 #' than aborting the whole bootstrap (mirrors `.ppeParametricBootstrap()`'s
-#' `n_failed` handling).
+#' `n_failed` handling) -- `B` in the plus-one formula is therefore
+#' `n_successful`, not `bootstrapSamples`, whenever any refit fails; both
+#' counts are returned so that is never ambiguous to a caller.
 #'
 #' @param x Retained (positive) test statistics the original fit used.
 #' @param df Degrees of freedom fixed by the comparison. Used only when
@@ -67,11 +69,18 @@
 #' @param target `"ncp"` (power comparison) or `"df"` (Type-I comparison).
 #' @param bootstrapSamples Number of bootstrap replicates.
 #' @param seed Passed to `.withPpeSeed()`.
-#' @return A single p-value in `(0, 1]`, computed with the standard
-#'   Monte Carlo plus-one correction
-#'   `(1 + sum(null_stats >= observed)) / (length(null_stats) + 1)` so it is
-#'   never exactly zero regardless of bootstrap sample size, or `NA_real_`
-#'   if every bootstrap refit failed.
+#' @return A list with:
+#'   \describe{
+#'     \item{p_value}{A single p-value in `(0, 1]`, computed with the
+#'       standard Monte Carlo plus-one correction
+#'       `(1 + sum(finite_stats >= observed)) / (bootstrap_successful + 1)`
+#'       so it is never exactly zero regardless of bootstrap sample size, or
+#'       `NA_real_` if every bootstrap refit failed.}
+#'     \item{bootstrap_requested}{`bootstrapSamples`, echoed back.}
+#'     \item{bootstrap_successful}{Number of bootstrap refits that did not
+#'       error -- the actual `B` used in the plus-one formula above.}
+#'     \item{bootstrap_failed}{`bootstrap_requested - bootstrap_successful`.}
+#'   }
 #' @noRd
 .ppeDiagnosticPValue <- function(x, df, estimate, target = c("ncp", "df"),
                                  bootstrapSamples = 1000L, seed = NULL) {
@@ -106,11 +115,20 @@
       .ppeCramerVonMises(draw[draw > 0], df = refit_df, ncp = refit_ncp, target = target)
     }, numeric(1))
   })
-  null_stats <- null_stats[is.finite(null_stats)]
-  if (length(null_stats) == 0L) {
-    return(NA_real_)
+  finite_stats <- null_stats[is.finite(null_stats)]
+  n_successful <- length(finite_stats)
+  n_failed <- bootstrapSamples - n_successful
+  p_value <- if (n_successful == 0L) {
+    NA_real_
+  } else {
+    (1 + sum(finite_stats >= observed)) / (n_successful + 1)
   }
-  (1 + sum(null_stats >= observed)) / (length(null_stats) + 1)
+  list(
+    p_value = p_value,
+    bootstrap_requested = bootstrapSamples,
+    bootstrap_successful = n_successful,
+    bootstrap_failed = n_failed
+  )
 }
 
 #' Pointwise bootstrap envelope for the ECDF panel
@@ -191,7 +209,7 @@
   seed <- bootSeed %||% .ppeDefaultSeed(x, comparison)
 
   cvm <- .ppeCramerVonMises(fit$retained, df = fitted_df, ncp = fitted_ncp, target = target)
-  p_value <- .ppeDiagnosticPValue(
+  pval_result <- .ppeDiagnosticPValue(
     fit$retained, df = comparison$df, estimate = fit$estimate, target = target,
     bootstrapSamples = bootstrapSamples, seed = seed
   )
@@ -213,9 +231,16 @@
   # ppeSummary()'s own column names) are what the CvM statistic and p-value
   # are actually computed against, and must be reported alongside `df` so
   # the diagnosed value is never invisible in its own output.
+  #
+  # bootstrap_requested/successful/failed make B in the documented plus-one
+  # formula unambiguous whenever a refit fails: p_value's denominator is
+  # bootstrap_successful + 1, not bootstrap_requested + 1.
   row <- data.frame(
     comparison = comparison$label, parameter = fit$parameter, estimate = fit$estimate,
-    cvm = cvm, p_value = p_value,
+    cvm = cvm, p_value = pval_result$p_value,
+    bootstrap_requested = pval_result$bootstrap_requested,
+    bootstrap_successful = pval_result$bootstrap_successful,
+    bootstrap_failed = pval_result$bootstrap_failed,
     n = fit$n, n_nonpositive = fit$nNonPositive,
     df = comparison$df %||% NA_real_, df_source = comparison$dfSource,
     stringsAsFactors = FALSE
@@ -317,10 +342,16 @@
 #'   `"ppeDiagnostics"` attribute (one row per comparison, with `comparison`,
 #'   `parameter` (`"ncp"` or `"df"`, whichever was diagnosed), `estimate`
 #'   (the fitted value of that parameter -- the value the discrepancy and
-#'   p-value are actually about), `cvm`, `p_value`, `n`, `n_nonpositive`,
-#'   `df` (the comparison's declared/nominal df, kept comparable across
-#'   power and type1 rows; for a Type-I comparison this can differ from
-#'   `estimate`), and `df_source`) so results are auditable without reading
+#'   p-value are actually about), `cvm`, `p_value`, `bootstrap_requested`,
+#'   `bootstrap_successful`, `bootstrap_failed` (a refit that errors is
+#'   dropped from `p_value`'s null distribution rather than aborting the
+#'   whole bootstrap, so `B` in the documented plus-one formula is
+#'   `bootstrap_successful`, not `bootstrap_requested`, whenever any refit
+#'   fails -- these three counts make that unambiguous), `n`,
+#'   `n_nonpositive`, `df` (the comparison's declared/nominal df, kept
+#'   comparable across power and type1 rows; for a Type-I comparison this
+#'   can differ from `estimate`), and `df_source`) so results are auditable
+#'   without reading
 #'   pixels.
 #' @export
 plotSSEPpeDiagnostics <- function(

@@ -652,7 +652,12 @@ right. The p-value uses the standard Monte Carlo plus-one correction,
 \(p=(1+\sum_b I(T_b\ge T_{obs}))/(B+1)\), so it is always strictly positive
 regardless of the bootstrap sample count -- the naive
 `mean(null_stats >= observed)` can report an impossible exact zero with a
-finite bootstrap sample, overstating evidence against the fitted model.
+finite bootstrap sample, overstating evidence against the fitted model. A
+refit that errors is dropped from the null distribution rather than
+aborting the whole bootstrap, so \(B\) above is the number of *successful*
+refits, not the requested sample count, whenever any refit fails; the
+`"ppeDiagnostics"` attribute reports `bootstrap_requested`,
+`bootstrap_successful`, and `bootstrap_failed` so \(B\) is never ambiguous.
 
 The CvM p-value and the ECDF envelope use different bootstrap
 constructions and answer different questions: the CvM p-value's null
