@@ -821,17 +821,33 @@ estimation, or the sample-size scaling law. PPE plotting no longer requires
 
 The high-level repeated simulation/refit loop and the principal bias and OFV summaries follow the same tradition, but the implementations diverge materially: PsN generates and executes NONMEM control streams and table datasets, matches parameter comparisons primarily by numbering, and by default can include readable estimates from unsuccessful minimizations unless filtered, whereas `nlmixr2sse` calls `rxSolve()`/`nlmixr2()` directly, uses canonical named parameter schemas, catches thrown fit errors, and persists keyed R tasks. For parameter uncertainty, PsN supports raw-results input, an NM7 covariance-file mode that samples all represented THETA/OMEGA/SIGMA elements jointly as an unconstrained multivariate Normal, and predeclared NONMEM `NWPRI`/`TNPRI` models whose sampling is performed by NONMEM; its helper for constructing NWPRI records requires user-supplied block degrees of freedom. `nlmixr2sse` instead provides raw-results sampling and the positive-definite `independent_iw` and `joint` covariance approximations documented above; neither is NWPRI or TNPRI.
 
-The PPE estimator itself is no longer a material difference: both PsN and
-`nlmixr2sse` fit the Ueckert, Karlsson & Hooker (2016) distribution-based
-noncentrality by maximum likelihood (`method = "distribution_mle"`, the
-default), and `nlmixr2sse` also ships the ECDF/QQ/Cramér-von Mises adequacy
-diagnostic (`plotSSEPpeDiagnostics()`) that PsN's SSE templates also
-provide. Two differences remain: `nlmixr2sse` derives a comparison's mode
-(power vs. Type-I) structurally, from which named model was actually
-simulated (see `sseComparison()`), where PsN instead reads it from a model
-filename suffix convention (`_base`/`_r`/`_red`/`_reduced`); and
-`nlmixr2sse` retains the original per-threshold exceedance estimator as an
-explicit, separately-named `method = "exceedance"` option for backward
+The PPE point-estimation method itself is not a material difference: both
+PsN and `nlmixr2sse` fit the Ueckert, Karlsson & Hooker (2016)
+distribution-based noncentrality by maximum likelihood
+(`method = "distribution_mle"`, the default), retaining only `dofvs > 0`
+before fitting. The diagnostic *presentation* differs more:
+`nlmixr2sse` extends PsN's ECDF-with-fitted-CDF-and-confidence-region plot
+with a separate QQ panel and a Cramér-von Mises discrepancy statistic and
+bootstrap p-value that PsN's template does not compute, and the two
+packages' confidence-region constructions are not identical (`nlmixr2sse`'s
+ECDF envelope is a fixed-parameter pointwise bootstrap; see
+[Parametric power estimation](#parametric-power-estimation)).
+
+There is also a real, if narrow, exact-zero edge case: PsN's own MLE
+excludes `dofvs == 0` from the fit (`dofvs[dofvs > 0]`) but computes
+`n_negative` using `dofv < 0` and derives its bootstrap sample size as
+`nrow(dofv_df) - n_negative` -- so an exact-zero row is dropped from PsN's
+point estimate but *not* subtracted from its own bootstrap sample size.
+`nlmixr2sse` uses the same retained-positive count (`nRetained`)
+consistently for both the point estimate and every downstream bootstrap, so
+the two implementations are not bitwise identical in the presence of exact
+zeros, even though both retain only strictly positive values for the point
+estimate itself. Two further differences remain: `nlmixr2sse` derives a
+comparison's mode (power vs. Type-I) structurally, from which named model
+was actually simulated (see `sseComparison()`), where PsN instead reads it
+from a model filename suffix convention (`_base`/`_r`/`_red`/`_reduced`);
+and `nlmixr2sse` retains the original per-threshold exceedance estimator as
+an explicit, separately-named `method = "exceedance"` option for backward
 compatibility, rather than only ever offering the distribution-based fit.
 
 This comparison is based on PsN's [`tool::sse`](https://github.com/UUPharmacometrics/PsN/blob/master/lib/tool/sse.pm), covariance sampler in [`model.pm`](https://github.com/UUPharmacometrics/PsN/blob/master/lib/model.pm), prior builder in [`model/problem.pm`](https://github.com/UUPharmacometrics/PsN/blob/master/lib/model/problem.pm), and [SSE user guide](https://github.com/UUPharmacometrics/PsN/releases/download/v5.7.0/sse_userguide.pdf).
