@@ -3,12 +3,18 @@ skip_on_cran()
 # testthat::test_path("..", "..", ...) below reaches into the source tree
 # (vignettes/, inst/scripts/, README.md) from tests/testthat/'s location.
 # That layout only exists when tests run against the source tree itself
-# (devtools::test()/load_all()); under R CMD check, tests run against the
-# INSTALLED package copy, where only tests/ and inst/'s own contents are
-# present at that relative location -- vignettes/ and README.md are never
-# installed at all. These are repository-hygiene checks, not package
-# behavior, so skip them outright when the source tree isn't there to check.
-.sse_power_source_tree_available <- dir.exists(testthat::test_path("..", "..", "R"))
+# (devtools::test()/load_all()); under R CMD check, tests run against a
+# separate tests/ copy R CMD check makes alongside (not nested inside) the
+# installed package, where vignettes/ and README.md are never present at all
+# -- R packaging convention never installs vignette *sources* anywhere (only
+# their built output, under inst/doc/). Checking for vignettes/ specifically
+# (rather than e.g. R/, which -- confusingly -- DOES exist in an installed
+# package, just holding a lazy-load database instead of source, and so is a
+# less obviously-safe thing to probe for) is the least ambiguous way to
+# detect "am I looking at the real source tree." These are repository-hygiene
+# checks, not package behavior, so skip them outright when the source tree
+# isn't there to check.
+.sse_power_source_tree_available <- dir.exists(testthat::test_path("..", "..", "vignettes"))
 
 test_that("sse power vignette example artifact is available and well-formed", {
   path <- system.file("extdata", "sse_power_example.rds", package = "nlmixr2sse")
