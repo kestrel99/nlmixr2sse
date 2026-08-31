@@ -39,6 +39,42 @@ test_that("a boundary solution is flagged rather than reported as a clean fit", 
   expect_lt(fit$estimate, 1e-6)
 })
 
+test_that("the boundary warning's mode-specific detail line never claims interval degeneracy", {
+  # Unit-level, deterministic coverage of the mode split: a df-target
+  # boundary solution is numerically implausible to reach through the real
+  # optimizer with continuous chi-square data (verified empirically -- even
+  # 5000 retained values at .Machine$double.xmin converge to a df estimate
+  # around 0.003, well above the 1e-8 boundary threshold), so this checks
+  # the message-selection logic directly rather than searching for a seed
+  # that may not exist.
+  ncp_detail <- .ppeBoundaryDetail("ncp")
+  df_detail <- .ppeBoundaryDetail("df")
+
+  expect_true(grepl("power", ncp_detail, ignore.case = TRUE))
+  expect_false(grepl("degenerate", ncp_detail, fixed = TRUE))
+  expect_false(grepl("power", df_detail, ignore.case = TRUE))
+  expect_false(grepl("degenerate", df_detail, fixed = TRUE))
+})
+
+test_that("ppeSummary's boundary warning does not claim the interval degenerates (power mode, end-to-end)", {
+  # Power mode: ncp pinned at its lower bound. Seed 75 with df = 4, ncp = 0,
+  # n = 60 reliably lands on boundary = TRUE (verified by direct search).
+  sse_power <- fake_ppe_sse_object(df = 4, ncp = 0, n = 60L, seed = 75L)
+  cmp_power <- sseComparison("simulation", "alt1", df = 4)
+  msg_power <- tryCatch(
+    { ppeSummary(sse_power, comparisons = cmp_power, bootstrapSamples = 20L, bootSeed = 1L); NA_character_ },
+    warning = function(w) conditionMessage(w)
+  )
+  expect_false(is.na(msg_power))
+  # The old false claim was "the interval is degenerate", stated as fact.
+  # The corrected message may still mention degeneracy, but only hedged
+  # ("does not generally degenerate") -- never asserted outright.
+  expect_false(grepl("is degenerate", msg_power, fixed = TRUE))
+  expect_true(grepl("does not generally degenerate", msg_power, fixed = TRUE))
+  expect_true(grepl("power", msg_power, ignore.case = TRUE))
+  expect_true(grepl("nonregular", msg_power, ignore.case = TRUE))
+})
+
 test_that("too few positive values is an error, not a silent fit", {
   expect_error(.ppeChiSquareMle(c(-1, 2), df = 1), "at least 2")
 })

@@ -311,6 +311,27 @@
   as.integer((base + offset) %% 2147483647)
 }
 
+#' Mode-specific detail line for a boundary-solution warning
+#'
+#' "Estimated power equals alpha" is only true when `ncp` (not `df`) is the
+#' boundary-pinned parameter -- a Type-I comparison estimates `df` instead,
+#' with `ncp` fixed at 0, so that claim does not apply there. Isolated as its
+#' own function so the mode split is directly unit-testable without needing
+#' to reach an actual boundary solution through the optimizer (a df-target
+#' boundary is numerically implausible to trigger with real continuous
+#' chi-square data; see the caller's tests).
+#'
+#' @param target `"ncp"` (power comparison) or `"df"` (Type-I comparison).
+#' @return A single string.
+#' @noRd
+.ppeBoundaryDetail <- function(target) {
+  if (identical(target, "ncp")) {
+    "Estimated power equals alpha at this boundary."
+  } else {
+    "The fitted degrees of freedom sit at their lower bound."
+  }
+}
+
 #' Fit the distribution_mle estimator and its bootstrap interval for one comparison
 #'
 #' @param x An `nlmixr2SSE` object.
@@ -351,7 +372,8 @@
   if (isTRUE(fit$boundary)) {
     cli::cli_warn(c(
       "!" = "The {target} estimate for {.val {comparison$label}} is at its lower bound.",
-      "i" = "Estimated power equals alpha and the interval is degenerate.",
+      "i" = .ppeBoundaryDetail(target),
+      "i" = "Boundary inference is nonregular; percentile-bootstrap coverage may be unreliable, though the interval does not generally degenerate.",
       "i" = "This is the constrained maximum-likelihood estimate, not a numerical failure."
     ))
   }

@@ -559,12 +559,26 @@ package does not attempt that and reports the exclusion count instead.
 **The constrained MLE can sit at its lower bound.** When the retained sample
 mean falls below `df`, no interior noncentrality maximizes the likelihood,
 and the estimate is pinned at its lower bound (`ppeSummary()`'s
-`boundary = TRUE`): reported power then equals `alpha` exactly, and the
-bootstrap interval degenerates. This is common, not exotic -- an informal
-spot-check at `ncp = 0.5, df = 4, n = 60` (200 replicates) found it in
-roughly 13% of them. It is the correct constrained-MLE answer given the
-data, not a numerical failure, and is reported as such rather than corrected
-or hidden.
+`boundary = TRUE`): for a power comparison, reported power then equals
+`alpha` exactly. This is common, not exotic -- an informal spot-check at
+`ncp = 0.5, df = 4, n = 60` (200 replicates) found it in roughly 13% of
+them. It is the correct constrained-MLE answer given the data, not a
+numerical failure, and is reported as such rather than corrected or hidden.
+
+The bootstrap interval does **not** generally degenerate at a boundary
+solution: each bootstrap sample is drawn from the fitted (boundary)
+noncentral chi-square and refit independently, and finite samples often
+refit to a strictly positive noncentrality even when the original point
+estimate is pinned at zero. A direct reproduction at `ncp = 0, df = 4,
+n = 60` (1,000 bootstrap samples) found a 97.5th percentile of
+approximately 0.705 for the refitted noncentrality, with positive estimates
+in 45.5% of samples -- so the percentile interval typically has a zero
+lower endpoint and a strictly positive upper endpoint. What is true is that
+boundary inference is nonregular: standard percentile-bootstrap coverage
+guarantees do not apply there, so the interval should be read with that
+caveat rather than assumed reliable, and Type-I-mode boundary solutions
+(where `df`, not `ncp`, is pinned) do not have a "power equals alpha"
+interpretation at all.
 
 **The bootstrap interval covers estimator variability only, never model
 misspecification.** `ppeSummary()`'s `ci_lower`/`ci_upper`
