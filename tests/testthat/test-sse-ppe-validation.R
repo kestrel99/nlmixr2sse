@@ -42,13 +42,42 @@ test_that("a deliberately nonlinear fixture is flagged", {
     v <- validateSSEPpeScaling(
       runs, comparisons = sseComparison("simulation", "alt1", df = 1)
     ),
-    "not proportional"
+    "exceeding the specified tolerance"
   )
   expect_true(v$nonlinear)
   # A poor through-origin fit: numerically verified at ~1.78 for this
   # fixture. 0.5 stays well below that while still well above the
   # proportional fixture's ~0.0002, giving real separation between the two.
+  #
+  # NOTE: keep the assertion above ("exceeding the specified tolerance") in
+  # sync with the regression test below, which locks in that this warning
+  # never asserts nonproportionality as an established fact -- the function
+  # is an exploratory diagnostic against a descriptive tolerance, not a
+  # calibrated test, and its warning text must not overclaim what it found.
   expect_gt(v$lackOfFit, 0.5)
+})
+
+test_that("the nonlinear warning does not assert nonproportionality as an established fact", {
+  # Regression test: this is an exploratory diagnostic against a descriptive
+  # tolerance, not a calibrated test, so the warning must not claim
+  # noncentrality "is not proportional" outright.
+  runs <- list(
+    fake_ppe_sse_object(df = 1, ncp = 5, n = 400L, subjects = 20L, seed = 54L),
+    fake_ppe_sse_object(df = 1, ncp = 8, n = 400L, subjects = 40L, seed = 55L),
+    fake_ppe_sse_object(df = 1, ncp = 9, n = 400L, subjects = 80L, seed = 56L)
+  )
+  msg <- tryCatch(
+    {
+      validateSSEPpeScaling(runs, comparisons = sseComparison("simulation", "alt1", df = 1))
+      NA_character_
+    },
+    warning = function(w) conditionMessage(w)
+  )
+
+  expect_false(is.na(msg))
+  expect_false(grepl("is not proportional", msg, fixed = TRUE))
+  expect_true(grepl("exploratory diagnostic", msg, fixed = TRUE))
+  expect_true(grepl("exceeding the specified tolerance", msg, fixed = TRUE))
 })
 
 test_that("two study sizes give only a descriptive ratio", {

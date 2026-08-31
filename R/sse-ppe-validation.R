@@ -138,9 +138,9 @@ validateSSEPpeScaling <- function(runs, comparisons = NULL, conf.level = 0.95,
   nonlinear <- spread > tolerance
   if (nonlinear) {
     cli::cli_warn(c(
-      "!" = "Estimated noncentrality is not proportional to study size across these runs.",
-      "i" = "lambda per subject ranges over {round(100 * spread)}% of its mean.",
-      "i" = "Extrapolating power from a single study size is unsupported over this range."
+      "!" = "The exploratory diagnostic found variation in lambda per subject exceeding the specified tolerance.",
+      "i" = "lambda per subject ranges over {round(100 * spread)}% of its mean, versus a {round(100 * tolerance)}% tolerance.",
+      "i" = "This is not a calibrated test of proportional scaling -- extrapolating power from a single study size is unsupported over this range."
     ))
   }
   list(table = table, lackOfFit = lack_of_fit, nonlinear = nonlinear,
