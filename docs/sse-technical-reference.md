@@ -344,14 +344,26 @@ scientific range before interpreting results.
 For each replicate, `.simulationRecord()` calls `rxode2::rxSolve()` on the
 reference fit's UI with the selected THETA, OMEGA, and SIGMA, the original data
 as events, `addCov = TRUE`, and a stable internal row identifier. The original
-design, doses, event records, covariates, missingness indicators, and observation
-times are therefore reused.
+design, doses, event records, covariates, and observation times are therefore
+reused, structurally unchanged.
 
 An observation row is one for which `EVID` is missing or zero and `MDV` is
 missing or zero; absent columns are treated as zero. The package replaces `DV`
-only on those rows with rxode2's `sim` output. It checks that the number of
-simulated and original observation rows agrees. Requested `appendColumns` are
-copied onto observation rows and are `NA` elsewhere.
+only on those rows with rxode2's `sim` output -- including a row whose
+original `DV` was itself missing, as long as its `MDV`/`EVID` classify it as
+an observation. It checks that the number of simulated and original
+observation rows agrees. Requested `appendColumns` are copied onto
+observation rows and are `NA` elsewhere.
+
+Only the `EVID`/`MDV`-derived observation classification and the structural
+event columns are reused as-is. Design-specific censoring or missingness
+fields (for example `CENS`, `LIMIT`, or a study's own missingness-indicator
+columns) are **not** regenerated, revalidated, or reconciled with the new
+simulated `DV`: a row's censoring status stays exactly what it was on the
+original data even though the new simulated value may fall on the other side
+of a bound, or a censoring indicator may no longer describe the simulated
+value at all. Analysts whose design has such logic must implement it in
+`simulationPostProcess`; the package does not infer it.
 
 `simulationPostProcess` runs after this merge. It may accept any subset of
 `data`, `sample`, `paramSet`, `solved`, `referenceData`, and `outputDir`, or
