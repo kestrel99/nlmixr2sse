@@ -25,6 +25,7 @@ reference:
   desc: Adequacy diagnostics for `parameterSource = "covariance"` replicate parameter draws.
   contents:
   - parameterDrawSummary
+  - plotSSEParameterDraws
 
 - title: Plotting
   desc: Diagnostic and summary plots for SSE runs.

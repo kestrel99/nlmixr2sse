@@ -26,6 +26,16 @@
   completed covariance-mode run, persisted through `sse_summary.rds` the
   same way `parameterSummary`/`ofvSummary` are.
 
+* New `plotSSEParameterDraws()`: the visual counterpart to
+  `parameterDrawSummary()`. One faceted histogram panel per drawn
+  THETA/OMEGA parameter, showing the ACTUALLY DRAWN replicate values with a
+  vertical reference line at that parameter's `target_mean`, so the two
+  draw-mode artefacts `parameterDrawSummary()` reports numerically --
+  `"joint"`-mode raw-scale mean drift and `"independent_iw"`-mode
+  non-binding-element over-dispersion -- are also visible as a shape.
+  Carries `parameterDrawSummary(x)`'s return value as a
+  `"parameterDrawSummary"` attribute on the returned plot.
+
 * Parameter summary: added `mcse_bias`/`ci_bias_lower`/`ci_bias_upper` and
   `mcse_relative_bias`/`ci_relative_bias_lower`/`ci_relative_bias_upper`
   (Monte Carlo standard errors of the bias, on the absolute and relative
