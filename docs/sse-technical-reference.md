@@ -49,7 +49,7 @@ draw adequacy are exposed through further functions:
 | Function | Purpose |
 | --- | --- |
 | [`sseComparison()`](../R/sse-comparison.R) | Define an explicit full/reduced model comparison, deriving `mode` (power/type1) from which member was simulated. |
-| [`comparisonSummary()`](../R/sse-comparison-summary.R) | Empirical rate and paired-evaluable counts for one or more comparisons. See [OFV differences, empirical power, and Type I error](#ofv-differences-empirical-power-and-type-i-error). |
+| [`comparisonSummary()`](../R/sse-comparison-summary.R) | Paired-evaluable conditional rejection rate and audit counts for one or more comparisons. See [OFV differences, empirical power, and Type I error](#ofv-differences-empirical-power-and-type-i-error). |
 | [`ppeSummary()`](../R/sse-ppe.R) | Distribution-based (`distribution_mle`) noncentrality/df point estimate and parametric-bootstrap interval per comparison. See [Parametric power estimation](#parametric-power-estimation). |
 | [`plotSSEPpeDiagnostics()`](../R/plot-sse-ppe-diagnostics.R) | ECDF/QQ/Cramér-von Mises adequacy diagnostic for the `distribution_mle` fit. |
 | [`validateSSEPpeScaling()`](../R/sse-ppe-validation.R) | Checks the proportional-noncentrality assumption across runs simulated at two or more study sizes. |
@@ -474,6 +474,30 @@ replicate where only one member converged contributes to neither the
 numerator nor a partial denominator -- it is excluded entirely, not imputed.
 The reported rate's exact binomial confidence interval is built from
 `n_exceeding`/`n_paired_evaluable`, not from `n_attempted`.
+
+The resulting rate is the **paired-evaluable conditional rejection
+probability** --
+\(P(T>c\mid\text{both models produced a finite, accepted OFV})\) -- not the
+unconditional rejection probability over every attempted replicate. The
+denominator excludes any replicate where either fit failed or was filtered
+out. If convergence or filtering depends on the simulated data, the model,
+or the test statistic itself, that exclusion is informative and the
+conditional rate can diverge from the unconditional one even when the
+paired-evaluable fraction is high; the `minPairedFraction` warning bounds
+only how small that fraction is allowed to get, not how biased the
+conditional rate can be at a given fraction. The unconditional design
+operating characteristic is not identified without an explicit policy for
+what an unpaired replicate should count as (e.g., counting every failure as
+a rejection, as a non-rejection, or modeling the failure mechanism
+directly); when failures are non-negligible, report the paired-evaluable
+rate alongside such a sensitivity analysis rather than in place of one.
+Likewise, the Clopper-Pearson interval on `probability` is an interval for
+the conditional Bernoulli rate among retained pairs only -- it does not
+incorporate uncertainty from the excluded replicates and should not be
+read as an interval for the unconditional operating characteristic. Reserve
+the terms "empirical power" and "empirical Type I error" for a context
+where this complete-case conditioning has been checked and is acceptable;
+otherwise name the estimand explicitly as above.
 
 The comparison's `criticalValue` is either supplied directly, for references
 the ordinary chi-square does not cover, or derived as
