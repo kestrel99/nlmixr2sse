@@ -201,6 +201,56 @@ test_that("infinite estimates and truths are excluded from summaries, not just N
   expect_equal(value_of("n_effective"), 4)
 })
 
+test_that("infinite or NaN TRUTHS are excluded pairwise, without dropping their (finite) estimates from univariate stats", {
+  # The previous test only varied the ESTIMATE column; pair_ok's
+  # is.finite(truth) half is untested by it. Every estimate here is finite,
+  # so "mean" (which depends only on estimate_ok) should use all 5 -- but
+  # "bias"/"n_effective" (which depend on pair_ok = estimate_ok &
+  # is.finite(truth)) must drop the replicates with an infinite or NaN
+  # truth, leaving only the 3 replicates with a genuinely finite pair.
+  raw_results <- data.frame(
+    sample = 1:5,
+    model_label = "ref_fit",
+    role = "simulation",
+    error_message = NA_character_,
+    tka = c(9, 11, 13, 8, 12),
+    check.names = FALSE,
+    stringsAsFactors = FALSE
+  )
+  attr(raw_results, "rawResultsHeader") <- list(
+    schema_version = 1L,
+    columns = names(raw_results),
+    base_cols = names(raw_results),
+    theta_cols = "tka",
+    omega_cols = character(0),
+    sigma_cols = character(0),
+    se_cols = character(0),
+    parameter_cols = "tka"
+  )
+  initial_wide <- data.frame(
+    sample = 1:5,
+    tka = c(10, 10, Inf, 10, NaN),
+    check.names = FALSE,
+    stringsAsFactors = FALSE
+  )
+  spec_map <- list(ref_fit = list(
+    thetaCols = "tka", omegaCols = character(0), sigmaCols = character(0)
+  ))
+
+  summary_tbl <- .computeParameterSummary(
+    rawResults = raw_results, initialWide = initial_wide, specMap = spec_map
+  )
+  value_of <- function(stat) {
+    subset(summary_tbl, parameter == "tka" & statistic == stat)$value
+  }
+
+  all_estimates <- c(9, 11, 13, 8, 12)
+  paired_estimates <- c(9, 11, 8)  # replicates 3 and 5 dropped (Inf/NaN truth)
+  expect_equal(value_of("mean"), mean(all_estimates))
+  expect_equal(value_of("bias"), mean(paired_estimates - 10))
+  expect_equal(value_of("n_effective"), 3)
+})
+
 test_that("the long-format table applies the percentage scaling exactly once, to exactly the relative fields", {
   # .parameterSummaryRow() itself returns fractional (0-1) values; the
   # integration point in .singleParameterSummary() multiplies only the

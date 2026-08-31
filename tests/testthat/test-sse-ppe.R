@@ -75,6 +75,28 @@ test_that("ppeSummary's boundary warning does not claim the interval degenerates
   expect_true(grepl("nonregular", msg_power, ignore.case = TRUE))
 })
 
+test_that("a boundary bootstrap interval actually has a positive upper endpoint, not just non-degenerate wording", {
+  # Behavioral proof, not just a check on the warning's prose: at this
+  # boundary solution (ncp pinned at its lower bound), finite bootstrap
+  # samples drawn under ncp = 0 (df = 4) often refit to a strictly positive
+  # noncentrality -- a direct 1000-sample reproduction found positive
+  # refits in 45.5% of draws (see the technical reference's PPE section).
+  # 300 bootstrap samples makes at least one positive refit overwhelmingly
+  # likely (P(none positive) = (1 - 0.455)^300, astronomically small),
+  # while still running quickly.
+  sse_power <- fake_ppe_sse_object(df = 4, ncp = 0, n = 60L, seed = 75L)
+  cmp_power <- sseComparison("simulation", "alt1", df = 4)
+
+  s <- suppressWarnings(
+    ppeSummary(sse_power, comparisons = cmp_power, bootstrapSamples = 300L, bootSeed = 1L)
+  )
+
+  expect_true(s$boundary)
+  expect_equal(s$estimate, 0, tolerance = 1e-6)
+  expect_gt(s$ci_upper, 0)
+  expect_gt(s$ci_upper, s$ci_lower)
+})
+
 test_that("too few positive values is an error, not a silent fit", {
   expect_error(.ppeChiSquareMle(c(-1, 2), df = 1), "at least 2")
 })

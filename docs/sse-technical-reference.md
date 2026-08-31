@@ -585,8 +585,8 @@ therefore impossible under the fitted family; PPE excludes them
 `nonpositivePolicy = "drop"`), so the exclusion is auditable, never silent.
 If a nonpositive \(T_i\) reflects real finite-sample behavior the assumed
 asymptotic distribution does not capture -- rather than pure numerical
-noise -- discarding it makes the fit a selected-subset estimator, and its
-bias is not knowably signed or magnitude from this fact alone: it depends
+noise -- discarding it makes the fit a selected-subset estimator, and
+neither its sign nor magnitude is knowable from this fact alone: it depends
 on why those values occurred and whether that reason correlates with the
 true noncentrality. Correcting for it would require modeling the excluded
 observations directly -- a point-mass/mixture, censoring, or an explicit
