@@ -2,7 +2,7 @@
 % Please edit documentation in R/sse-ppe-validation.R
 \name{validateSSEPpeScaling}
 \alias{validateSSEPpeScaling}
-\title{Validate the proportional-noncentrality assumption across study sizes}
+\title{Exploratory consistency check for the proportional-noncentrality assumption}
 \usage{
 validateSSEPpeScaling(
   runs,
@@ -35,7 +35,10 @@ A list with:
 \describe{
 \item{table}{A \code{data.frame}, one row per run ordered by study size,
 with \code{subjects}, the fitted \code{lambda} (noncentrality estimate),
-its bootstrap \code{ci_lower}/\code{ci_upper}, and \code{lambda_per_subject}.}
+its bootstrap \code{ci_lower}/\code{ci_upper}, \code{lambda_per_subject}, and
+\code{ci_lower_per_subject}/\code{ci_upper_per_subject} (each run's own
+\code{ci_lower}/\code{ci_upper} divided by its \code{subjects}, giving
+\code{lambda_per_subject} its own attached uncertainty).}
 \item{lackOfFit}{The residual sum of squares from a through-origin fit
 of \code{lambda} on \code{subjects}, relative to the total sum of squares
 around the mean \code{lambda}. Near 0 indicates a good through-origin fit
@@ -46,7 +49,10 @@ uninformative) or when every fitted \code{lambda} is identical (e.g. every
 run's estimate pinned at the same lower bound), leaving no variance
 for the ratio to describe.}
 \item{nonlinear}{\code{TRUE} when \code{lambda_per_subject} spreads over more
-than \code{tolerance} of its mean across runs.}
+than \code{tolerance} of its mean across runs. \code{nonlinear = FALSE} means
+this diagnostic did not detect inconsistency at the given
+tolerance -- it is not evidence that proportional scaling holds; a
+coarse tolerance or few runs can fail to detect real nonlinearity.}
 \item{tolerance}{The tolerance used, echoed back for reference.}
 }
 }
@@ -56,10 +62,16 @@ were never simulated by assuming the noncentrality parameter scales
 linearly with study size: \code{ncp = lambda_per_subject * subjects}. That
 assumption holds for a simple, well-identified model but can fail when,
 for example, the design or estimation method degrades disproportionately
-at small sample sizes. This function checks the assumption empirically by
-fitting the same comparison across multiple completed SSE runs that only
-differ in study size, and reporting how consistent the fitted
-noncentrality-per-subject ratio is across them.
+at small sample sizes. This function does not validate or test the
+assumption in a calibrated sense: it fits the same comparison across
+multiple completed SSE runs that are assumed (not verified) to differ
+only in study size, and reports how consistent the fitted
+noncentrality-per-subject ratio is across them, with each run's own
+bootstrap uncertainty attached to that ratio. It does not propagate
+correlation among the per-run estimates, and does not by itself establish
+that the runs are comparable in design, model, parameter source,
+filtering, or estimation settings -- the caller must establish that
+separately.
 }
 \details{
 Only power comparisons (an estimated noncentrality \code{ncp} at a fixed \code{df})

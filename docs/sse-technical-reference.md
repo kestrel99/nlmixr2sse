@@ -52,7 +52,7 @@ draw adequacy are exposed through further functions:
 | [`comparisonSummary()`](../R/sse-comparison-summary.R) | Paired-evaluable conditional rejection rate and audit counts for one or more comparisons. See [OFV differences, empirical power, and Type I error](#ofv-differences-empirical-power-and-type-i-error). |
 | [`ppeSummary()`](../R/sse-ppe.R) | Distribution-based (`distribution_mle`) noncentrality/df point estimate and parametric-bootstrap interval per comparison. See [Parametric power estimation](#parametric-power-estimation). |
 | [`plotSSEPpeDiagnostics()`](../R/plot-sse-ppe-diagnostics.R) | ECDF/QQ/Cramér-von Mises adequacy diagnostic for the `distribution_mle` fit. |
-| [`validateSSEPpeScaling()`](../R/sse-ppe-validation.R) | Checks the proportional-noncentrality assumption across runs simulated at two or more study sizes. |
+| [`validateSSEPpeScaling()`](../R/sse-ppe-validation.R) | Exploratory diagnostic for consistency of the proportional-noncentrality assumption across runs simulated at two or more study sizes; not a calibrated test. |
 | [`parameterDrawSummary()`](../R/sse-parameter-diagnostics.R) | Realized-vs-target adequacy diagnostic for `parameterSource = "covariance"` replicate draws. |
 | [`plotSSEParameterDraws()`](../R/plot-sse-parameter-draws.R) | Visual counterpart to `parameterDrawSummary()`: one histogram panel per drawn parameter. |
 
@@ -578,10 +578,15 @@ reran the bootstrap," not "is the fitted model right."
 
 **Extrapolation to an unstudied sample size assumes linear scaling,
 \(\lambda(n)=\lambda_0n/n_0\).** This is an assumption the package does not
-verify on its own -- test it directly with `validateSSEPpeScaling()` across
-runs simulated at two or more actual study sizes before trusting an
-extrapolated value; with three or more sizes it also reports a
-through-origin lack-of-fit statistic.
+verify on its own. `validateSSEPpeScaling()` provides an exploratory
+consistency diagnostic across runs simulated at two or more actual study
+sizes -- it reports each run's `lambda_per_subject` with its own bootstrap
+uncertainty, and with three or more sizes a through-origin lack-of-fit
+statistic -- but it does not propagate uncertainty across runs jointly, does
+not verify that the runs differ only in study size, and `nonlinear = FALSE`
+means the diagnostic did not detect inconsistency, not that proportional
+scaling is confirmed. Establishing design comparability across the runs is
+the caller's responsibility.
 
 **`plotSSEPpeDiagnostics()`** provides evidence about approximation
 adequacy, never a pass/fail certification: an ECDF-vs-fitted-CDF panel with
@@ -756,8 +761,10 @@ Before reporting an SSE result, verify:
   one means the retained-statistics fit is more biased upward by truncation;
   and
 - the proportional-scaling assumption behind any PPE extrapolation was
-  checked with `validateSSEPpeScaling()` across directly simulated study
-  sizes, not merely assumed, when sample-size decisions are consequential.
+  exercised with `validateSSEPpeScaling()`'s exploratory consistency
+  diagnostic across directly simulated study sizes, not merely assumed,
+  when sample-size decisions are consequential -- and that the runs
+  compared are known (not merely assumed) to differ only in study size.
 
 Important current limitations are: alternative-model data overrides are
 ignored; initial ETA control is unavailable; covariance THETA draws are not

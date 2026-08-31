@@ -20,6 +20,18 @@ test_that("proportional fixtures give a consistent lambda per subject", {
   expect_lt(v$lackOfFit, 0.05)
 })
 
+test_that("the table reports per-subject uncertainty, not just a bare point ratio", {
+  run1 <- fake_ppe_sse_object(df = 1, ncp = 10, n = 300L, subjects = 50L, seed = 65L)
+  run2 <- fake_ppe_sse_object(df = 1, ncp = 20, n = 300L, subjects = 100L, seed = 66L)
+  cmp <- sseComparison("simulation", "alt1", df = 1)
+
+  result <- validateSSEPpeScaling(list(run1, run2), comparisons = cmp, bootstrapSamples = 100L)
+
+  expect_true(all(c("ci_lower_per_subject", "ci_upper_per_subject") %in% names(result$table)))
+  expect_equal(result$table$ci_lower_per_subject, result$table$ci_lower / result$table$subjects)
+  expect_equal(result$table$ci_upper_per_subject, result$table$ci_upper / result$table$subjects)
+})
+
 test_that("a deliberately nonlinear fixture is flagged", {
   runs <- list(
     fake_ppe_sse_object(df = 1, ncp = 5, n = 400L, subjects = 20L, seed = 54L),

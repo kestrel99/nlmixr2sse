@@ -1,14 +1,20 @@
-#' Validate the proportional-noncentrality assumption across study sizes
+#' Exploratory consistency check for the proportional-noncentrality assumption
 #'
 #' Parametric power estimation (PPE) extrapolates power to sample sizes that
 #' were never simulated by assuming the noncentrality parameter scales
 #' linearly with study size: `ncp = lambda_per_subject * subjects`. That
 #' assumption holds for a simple, well-identified model but can fail when,
 #' for example, the design or estimation method degrades disproportionately
-#' at small sample sizes. This function checks the assumption empirically by
-#' fitting the same comparison across multiple completed SSE runs that only
-#' differ in study size, and reporting how consistent the fitted
-#' noncentrality-per-subject ratio is across them.
+#' at small sample sizes. This function does not validate or test the
+#' assumption in a calibrated sense: it fits the same comparison across
+#' multiple completed SSE runs that are assumed (not verified) to differ
+#' only in study size, and reports how consistent the fitted
+#' noncentrality-per-subject ratio is across them, with each run's own
+#' bootstrap uncertainty attached to that ratio. It does not propagate
+#' correlation among the per-run estimates, and does not by itself establish
+#' that the runs are comparable in design, model, parameter source,
+#' filtering, or estimation settings -- the caller must establish that
+#' separately.
 #'
 #' Only power comparisons (an estimated noncentrality `ncp` at a fixed `df`)
 #' are supported: a Type-I comparison fixes `ncp = 0` and estimates `df`
@@ -31,7 +37,10 @@
 #'   \describe{
 #'     \item{table}{A `data.frame`, one row per run ordered by study size,
 #'       with `subjects`, the fitted `lambda` (noncentrality estimate),
-#'       its bootstrap `ci_lower`/`ci_upper`, and `lambda_per_subject`.}
+#'       its bootstrap `ci_lower`/`ci_upper`, `lambda_per_subject`, and
+#'       `ci_lower_per_subject`/`ci_upper_per_subject` (each run's own
+#'       `ci_lower`/`ci_upper` divided by its `subjects`, giving
+#'       `lambda_per_subject` its own attached uncertainty).}
 #'     \item{lackOfFit}{The residual sum of squares from a through-origin fit
 #'       of `lambda` on `subjects`, relative to the total sum of squares
 #'       around the mean `lambda`. Near 0 indicates a good through-origin fit
@@ -42,7 +51,10 @@
 #'       run's estimate pinned at the same lower bound), leaving no variance
 #'       for the ratio to describe.}
 #'     \item{nonlinear}{`TRUE` when `lambda_per_subject` spreads over more
-#'       than `tolerance` of its mean across runs.}
+#'       than `tolerance` of its mean across runs. `nonlinear = FALSE` means
+#'       this diagnostic did not detect inconsistency at the given
+#'       tolerance -- it is not evidence that proportional scaling holds; a
+#'       coarse tolerance or few runs can fail to detect real nonlinearity.}
 #'     \item{tolerance}{The tolerance used, echoed back for reference.}
 #'   }
 #' @export
@@ -99,6 +111,12 @@ validateSSEPpeScaling <- function(runs, comparisons = NULL, conf.level = 0.95,
     stringsAsFactors = FALSE
   )
   table$lambda_per_subject <- table$lambda / table$subjects
+  # Per-subject uncertainty, derived from each run's own bootstrap interval
+  # on lambda (never pooled across runs): this is what makes the diagnostic
+  # exploratory evidence about consistency rather than a bare point-ratio
+  # comparison with no attached uncertainty.
+  table$ci_lower_per_subject <- table$ci_lower / table$subjects
+  table$ci_upper_per_subject <- table$ci_upper / table$subjects
   table <- table[order(table$subjects), , drop = FALSE]
 
   min_runs_for_lack_of_fit <- 3L
