@@ -2,7 +2,7 @@
 #'
 #' `plot()` dispatches to one of the package's Phase 7 plotting helpers.
 #'
-#' @param x,object An `nlmixr2SSE` object.
+#' @param x An `nlmixr2SSE` object.
 #' @param type Plot type. Supported values are `"parameter_bias"`,
 #'   `"parameter_estimates"`, `"ofv_distribution"`, `"power"`,
 #'   `"ppe_power"`, and `"diagnostics"`.
@@ -1155,6 +1155,36 @@ plotSSEPower <- function(
 #'   comparison's label (`.ppeDefaultSeed()`), so repeated calls on the same
 #'   run reproduce the same interval without the caller managing seeds.
 #' @param ... Reserved for future extensions.
+#'
+#' @section Limitations:
+#' `method = "distribution_mle"` fits the UNCONDITIONAL noncentral
+#' chi-square density to only the RETAINED (positive) test statistics,
+#' excluding the rest -- it does not renormalize for that truncation, so the
+#' fit is biased upward whenever non-positive statistics are common (the
+#' excluded count is always reported so this is auditable, not hidden; see
+#' `ppeSummary()`'s `n`/`n_nonpositive` columns).
+#'
+#' The `power_lower`/`power_upper` ribbon (and `ppeSummary()`'s bootstrap
+#' interval) is a parametric bootstrap under the FITTED model
+#' (`interval_type = "model_based"`): it covers estimator variability given
+#' that the noncentral chi-square is correct, never the possibility that it
+#' is not. It is not a statement about model misspecification.
+#'
+#' Extrapolating the curve to a study size that was never directly simulated
+#' assumes the noncentrality scales linearly with size,
+#' \eqn{\lambda(n) = \lambda_0 n / n_0}. This is an assumption, not something
+#' this function verifies -- test it directly with `validateSSEPpeScaling()`
+#' across runs simulated at more than one study size before trusting an
+#' extrapolated value.
+#'
+#' Building an `sseComparison()` does not, by itself, prove the two named
+#' models are nested or that their OFVs are on a comparable scale -- that is
+#' the caller's responsibility. A hypothesis on a parameter boundary (e.g.
+#' testing a variance against zero) does not follow ordinary chi-square
+#' asymptotics; such comparisons need a user-supplied `criticalValue` (which
+#' disables PPE, since PPE assumes a noncentral chi-square alternative) or an
+#' empirical null calibrated by direct SSE, not the default `df`-based
+#' reference.
 #'
 #' @return A `ggplot` object.
 #' @export

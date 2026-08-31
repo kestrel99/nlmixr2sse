@@ -13,7 +13,7 @@
 )
 }
 \arguments{
-\item{x, object}{An \code{nlmixr2SSE} object.}
+\item{x}{An \code{nlmixr2SSE} object.}
 
 \item{type}{Plot type. Supported values are \code{"parameter_bias"},
 \code{"parameter_estimates"}, \code{"ofv_distribution"}, \code{"power"},

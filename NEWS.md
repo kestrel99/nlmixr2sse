@@ -1,5 +1,24 @@
 # nlmixr2sse 0.1
 
+## Breaking changes
+
+* `plotSSEPpePower()` now defaults to `method = "distribution_mle"`, which
+  estimates one noncentrality parameter per comparison by maximum likelihood
+  from the whole test-statistic distribution. Previous releases inverted the
+  empirical exceedance probability separately at each threshold, which could
+  imply a different effect size at every threshold. Plots and derived numbers
+  will change. Pass `method = "exceedance"` to restore the previous
+  estimator; its outputs are now named `threshold_exceedance_probability` and
+  `threshold_implied_ncp` so the two cannot be confused. See below for the
+  full set of changes this brought (`ppeSummary()`, `plotSSEPpeDiagnostics()`,
+  `sseComparison()`, `validateSSEPpeScaling()`).
+* Parameter summaries replace `rse` with `mcse_relative_bias`, which is
+  always nonnegative and defined for varying truths. `rse` remains as a
+  superseded alias for one release; see below for the full field list this
+  added (`mcse_bias`, both `ci_*` pairs, `n_effective`, `n_effective_relative`).
+
+## New features
+
 * New `parameterDrawSummary()`: for a completed `parameterSource =
   "covariance"` run, reports -- for every drawn THETA/OMEGA parameter, one
   row each -- how the ACTUALLY DRAWN replicate values compare to the

@@ -85,3 +85,35 @@ A \code{ggplot} object.
 \description{
 Plot PPE power-versus-sample-size curves
 }
+\section{Limitations}{
+
+\code{method = "distribution_mle"} fits the UNCONDITIONAL noncentral
+chi-square density to only the RETAINED (positive) test statistics,
+excluding the rest -- it does not renormalize for that truncation, so the
+fit is biased upward whenever non-positive statistics are common (the
+excluded count is always reported so this is auditable, not hidden; see
+\code{ppeSummary()}'s \code{n}/\code{n_nonpositive} columns).
+
+The \code{power_lower}/\code{power_upper} ribbon (and \code{ppeSummary()}'s bootstrap
+interval) is a parametric bootstrap under the FITTED model
+(\code{interval_type = "model_based"}): it covers estimator variability given
+that the noncentral chi-square is correct, never the possibility that it
+is not. It is not a statement about model misspecification.
+
+Extrapolating the curve to a study size that was never directly simulated
+assumes the noncentrality scales linearly with size,
+\eqn{\lambda(n) = \lambda_0 n / n_0}. This is an assumption, not something
+this function verifies -- test it directly with \code{validateSSEPpeScaling()}
+across runs simulated at more than one study size before trusting an
+extrapolated value.
+
+Building an \code{sseComparison()} does not, by itself, prove the two named
+models are nested or that their OFVs are on a comparable scale -- that is
+the caller's responsibility. A hypothesis on a parameter boundary (e.g.
+testing a variance against zero) does not follow ordinary chi-square
+asymptotics; such comparisons need a user-supplied \code{criticalValue} (which
+disables PPE, since PPE assumes a noncentral chi-square alternative) or an
+empirical null calibrated by direct SSE, not the default \code{df}-based
+reference.
+}
+
