@@ -10,9 +10,9 @@ as the package evolves.
 
 An SSE run approximates the repeated-sampling behavior of one or more analysis
 models under a specified data-generating model, study design, parameter source,
-and estimation procedure. For replicate \(i=1,\ldots,N\), the package:
+and estimation procedure. For replicate $i=1,\ldots,N$, the package:
 
-1. chooses a simulation parameter set \(\psi_i=(\theta_i,\Omega_i,\Sigma_i)\);
+1. chooses a simulation parameter set $\psi_i=(\theta_i,\Omega_i,\Sigma_i)$;
 2. simulates a new dependent variable on the reference fit's original event and
    covariate data;
 3. fits the reference analysis model, if requested, and every alternative model
@@ -204,42 +204,42 @@ Two covariance draw modes are available.
 `covarianceDraw = "independent_iw"` is the default. It makes two independent
 draws:
 
-\[
+$$
 \theta_i \sim N(\widehat\theta,\widehat V_{\theta\theta})
-\]
+$$
 
 for covered THETAs, and one inverse-Wishart draw for each fully covered OMEGA
 block. THETA-OMEGA covariance, covariance between separate OMEGA blocks, and
 OMEGA estimator covariances other than those induced by the chosen
 inverse-Wishart distribution are discarded.
 
-For a \(p\times p\) block, the implementation uses
+For a $p\times p$ block, the implementation uses
 
-\[
+$$
   \Omega_i \sim IW_p(\Psi,\nu), \qquad
   \Psi=(\nu-p-1)\widehat\Omega,
-\]
+$$
 
-so that \(E(\Omega_i)=\widehat\Omega\). If \(s_j\) is the standard error of
-diagonal variance \(\widehat\Omega_{jj}\), obtained from the corresponding
+so that $E(\Omega_i)=\widehat\Omega$. If $s_j$ is the standard error of
+diagonal variance $\widehat\Omega_{jj}$, obtained from the corresponding
 diagonal of `fit$cov`, then
 
-\[
+$$
   \operatorname{Var}(\Omega_{i,jj})
     = \frac{2\widehat\Omega_{jj}^2}{\nu-p-3},
   \qquad
   \nu_j=p+3+2\left(\frac{\widehat\Omega_{jj}}{s_j}\right)^2.
-\]
+$$
 
-There is only one \(\nu\) per block. The code chooses
-\(\nu=\min_j\nu_j\), meaning that the diagonal with the largest relative
+There is only one $\nu$ per block. The code chooses
+$\nu=\min_j\nu_j$, meaning that the diagonal with the largest relative
 standard error binds and is matched exactly. Every other usable diagonal is
 more dispersed than its reported standard error under the constructed
 marginal. This is not a guarantee that predictions, tests, or other functions
 of OMEGA are conservative.
 
 Sampling is delegated to `rxode2::cvPost()`. Its input is pre-scaled by
-\((\nu-p-1)/\nu\) to implement the mean-centered parameterization above.
+$(\nu-p-1)/\nu$ to implement the mean-centered parameterization above.
 Every returned block is positive-definite, subject to ordinary floating-point
 limits.
 
@@ -270,34 +270,34 @@ drawing THETA and all drawable OMEGA blocks together. Direct Gaussian sampling
 of OMEGA elements could yield an indefinite matrix, so each fitted block is
 mapped to an unconstrained log-Cholesky vector.
 
-For a block \(\Omega=LL^T\), where \(L\) is lower triangular with positive
-diagonal, define \(\phi\) as the lower-triangular elements of \(L\) in
+For a block $\Omega=LL^T$, where $L$ is lower triangular with positive
+diagonal, define $\phi$ as the lower-triangular elements of $L$ in
 column-major order, with diagonal elements replaced by their logarithms. The
-inverse map exponentiates the diagonal and reconstructs \(LL^T\). [Pinheiro and
+inverse map exponentiates the diagonal and reconstructs $LL^T$. [Pinheiro and
 Bates (1996)](https://doi.org/10.1007/BF00140873) describe this class of unconstrained covariance parameterizations.
 
-Let \(\omega\) stack the natural-scale lower-triangular OMEGA entries and let
-\(J=\partial\phi/\partial\omega\) at the fitted OMEGA. The code computes \(J\)
+Let $\omega$ stack the natural-scale lower-triangular OMEGA entries and let
+$J=\partial\phi/\partial\omega$ at the fitted OMEGA. The code computes $J$
 numerically using scale-aware central differences, step halving near the
 positive-definite boundary, and a one-sided fallback. It then applies the
 first-order delta method ([Oehlert, 1992](https://doi.org/10.1080/00031305.1992.10475842)):
 
-\[
+$$
   B=\operatorname{blockdiag}(I,J), \qquad
   V_T=B\widehat V B^T.
-\]
+$$
 
 One draw is made from
 
-\[
+$$
   \begin{bmatrix}\theta_i\\\phi_i\end{bmatrix}
   \sim N\!\left(
     \begin{bmatrix}\widehat\theta\\\phi(\widehat\Omega)\end{bmatrix},
     V_T
   \right),
-\]
+$$
 
-and each \(\phi_i\) is transformed back to OMEGA. Thus the reported
+and each $\phi_i$ is transformed back to OMEGA. Thus the reported
 THETA-OMEGA covariance, within-block OMEGA covariance, and covariance between
 separate drawable blocks are retained to first order. `V_T` must itself be
 positive-definite; otherwise the mode aborts and suggests another parameter
@@ -321,11 +321,11 @@ Weaknesses:
 
 For a 1-by-1 block, the mean inflation is exactly
 
-\[
+$$
   \frac{E(\Omega_i)}{\widehat\Omega}-1
   =\exp\!\left[\frac{1}{2}
     \left(\frac{s}{\widehat\Omega}\right)^2\right]-1
-\]
+$$
 
 under this delta-Gaussian construction: about 2.0% at 20% relative SE, 13.3%
 at 50%, and 64.9% at 100%. For larger blocks the diagonal is a sum of squared
@@ -413,11 +413,11 @@ used by `nlmixr2utils`, including named THETAs and matrix-coordinate OMEGA/SIGMA
 labels. A model without a parameter receives `matched = FALSE`, `NA` statistics,
 and effective count zero for that parameter.
 
-For finite estimates \(\widehat x_i\) and finite matched truths \(x_i\)
+For finite estimates $\widehat x_i$ and finite matched truths $x_i$
 (infinite or `NaN` values are excluded, not merely `NA` ones), the
 principal statistics are:
 
-\[
+$$
 \begin{aligned}
 \operatorname{RMSE} &= \sqrt{N^{-1}\sum_i(\widehat x_i-x_i)^2},\\
 \operatorname{bias} &= N^{-1}\sum_i(\widehat x_i-x_i),\\
@@ -428,7 +428,7 @@ principal statistics are:
 \operatorname{relative\ absolute\ bias} &=100N^{-1}\sum_i
   \left|\frac{\widehat x_i-x_i}{x_i}\right|.
 \end{aligned}
-\]
+$$
 
 Rows with a missing, infinite, or `NaN` estimate or truth are omitted
 pairwise, so a non-finite value cannot silently propagate into a mean, bias,
@@ -440,26 +440,26 @@ Every long-form statistic has its own `n_effective`.
 **`mcse_relative_bias`** (the statistic named `rse` in earlier releases, still
 present as a superseded alias for one release) is the Monte Carlo standard
 error of relative bias -- not a model-fit parameter RSE. For matched
-replicate-level errors \(e_i=\widehat x_i-x_i\) and relative errors
-\(r_i=e_i/x_i\),
+replicate-level errors $e_i=\widehat x_i-x_i$ and relative errors
+$r_i=e_i/x_i$,
 
-\[
+$$
   \operatorname{mcse\_bias} = \frac{\operatorname{SD}(e_i)}{\sqrt N},
   \qquad
   \operatorname{mcse\_relative\_bias} = 100\,\frac{\operatorname{SD}(r_i)}{\sqrt N},
-\]
+$$
 
 computed from the paired replicate-level errors regardless of whether the
-matched truth \(x_i\) is the same value across every replicate or varies by
-replicate (as for `rawres` or covariance-mode runs) -- no single \(x_0\) is
+matched truth $x_i$ is the same value across every replicate or varies by
+replicate (as for `rawres` or covariance-mode runs) -- no single $x_0$ is
 required. `n_effective_relative` excludes replicates whose truth is zero or
 non-finite (relative error is undefined there); `mcse_bias`/`n_effective`
 carry no such restriction, since bias itself is well-defined even at a zero
-truth. When every matched truth happens to equal the same finite \(x_0\),
+truth. When every matched truth happens to equal the same finite $x_0$,
 this reduces to the constant-truth special case
-\(100\operatorname{SD}(\widehat x)/(|x_0|\sqrt N)\); both statistics are
+$100\operatorname{SD}(\widehat x)/(|x_0|\sqrt N)$; both statistics are
 always nonnegative by construction (an `SD`), unlike the original `rse`
-formula, which divided by \(x_0\) directly and could come out negative for
+formula, which divided by $x_0$ directly and could come out negative for
 a negative fixed truth. `ci_bias_lower`/`ci_bias_upper` and
 `ci_relative_bias_lower`/`ci_relative_bias_upper` are normal-approximation
 95% intervals formed as bias (respectively relative bias) plus/minus
@@ -470,7 +470,7 @@ with the replicate count still reported via `n_effective`/
 `ci_0.5`...`ci_99.5`, still reported unchanged) are computed from the
 paired replicate-level errors and are therefore well-defined for
 varying-truth `rawres` and covariance runs too, where each replicate has
-its own \(x_i\); no single \(x_0\) applies or is required.
+its own $x_i$; no single $x_0$ applies or is required.
 
 ## OFV differences, empirical power, and Type I error
 
@@ -486,9 +486,9 @@ cmp <- sseComparison(full = "simulation", reduced = "reduced_model", df = 1)
 `full`/`reduced` are model labels, or the reserved token `"simulation"`
 resolving to the fitted simulation model's label. The test statistic is
 
-\[
+$$
   T_i=\operatorname{OFV}_{\mathrm{reduced},i}-\operatorname{OFV}_{\mathrm{full},i},
-\]
+$$
 
 computed from the named models, never inferred from a sign. The comparison's
 **mode** follows structurally from which member was actually simulated: if
@@ -514,7 +514,7 @@ The reported rate's exact binomial confidence interval is built from
 
 The resulting rate is the **paired-evaluable conditional rejection
 probability** --
-\(P(T>c\mid\text{both models produced a finite, accepted OFV})\) -- not the
+$P(T>c\mid\text{both models produced a finite, accepted OFV})$ -- not the
 unconditional rejection probability over every attempted replicate. The
 denominator excludes any replicate where either fit failed or was filtered
 out. If convergence or filtering depends on the simulated data, the model,
@@ -558,7 +558,7 @@ model, with `df` taken from the parameter-count fallback described under
 (reported as `df_source = "parameter_count"`), and a warning that this is a convenience,
 not an assertion of correctness. The original `mean_delta_ofv`/
 `pct_delta_above`/`pct_delta_below` fields, keyed by
-\(\Delta_i=\operatorname{OFV}_{\mathrm{reference},i}-\operatorname{OFV}_{\mathrm{alternative},i}\)
+$\Delta_i=\operatorname{OFV}_{\mathrm{reference},i}-\operatorname{OFV}_{\mathrm{alternative},i}$
 with `direction` encoding only which tail was tested, remain available for
 backward compatibility but carry none of the paired-evaluable accounting
 above.
@@ -568,9 +568,9 @@ above.
 `plotSSEPpePower()`/`ppeSummary()` default to `method = "distribution_mle"`:
 maximum-likelihood parametric power estimation (PPE) after [Ueckert, Karlsson
 & Hooker (2016)](https://doi.org/10.1007/s10928-016-9468-y), the method PsN implements. The estimand is a single
-noncentrality parameter \(\lambda\) per comparison, fitted by maximum
+noncentrality parameter $\lambda$ per comparison, fitted by maximum
 likelihood to the whole distribution of positive test statistics
-\(T_i=\operatorname{OFV}_{\mathrm{reduced},i}-\operatorname{OFV}_{\mathrm{full},i}\)
+$T_i=\operatorname{OFV}_{\mathrm{reduced},i}-\operatorname{OFV}_{\mathrm{full},i}$
 (see [OFV differences, empirical power, and Type I error](#ofv-differences-empirical-power-and-type-i-error)
 above) -- replacing the threshold-specific exceedance inversion this section
 previously described, which fit a separate effective noncentrality at every
@@ -578,12 +578,12 @@ threshold and could imply a different effect size at each one.
 
 **Only positive test statistics are used, and this is a selection, not a
 truncation, correction.** A noncentral chi-square with `df > 0` has
-\(P(X>0)=1\), so \(f(x\mid X>0)=f(x)\) for \(x>0\) exactly -- there is no
-missing normalization constant to restore. Observed \(T_i\le 0\) are
+$P(X>0)=1$, so $f(x\mid X>0)=f(x)$ for $x>0$ exactly -- there is no
+missing normalization constant to restore. Observed $T_i\le 0$ are
 therefore impossible under the fitted family; PPE excludes them
 (`ppeSummary()`'s `n_nonpositive`; `plotSSEPpePower()` warns unless
 `nonpositivePolicy = "drop"`), so the exclusion is auditable, never silent.
-If a nonpositive \(T_i\) reflects real finite-sample behavior the assumed
+If a nonpositive $T_i$ reflects real finite-sample behavior the assumed
 asymptotic distribution does not capture -- rather than pure numerical
 noise -- discarding it makes the fit a selected-subset estimator, and
 neither its sign nor magnitude is knowable from this fact alone: it depends
@@ -629,7 +629,7 @@ were exactly right and I reran the bootstrap," not "is the fitted model
 right."
 
 **Extrapolation to an unstudied sample size assumes linear scaling,
-\(\lambda(n)=\lambda_0n/n_0\).** This is an assumption the package does not
+$\lambda(n)=\lambda_0n/n_0$.** This is an assumption the package does not
 verify on its own. `validateSSEPpeScaling()` provides an exploratory
 consistency diagnostic across runs simulated at two or more actual study
 sizes -- it reports each run's `lambda_per_subject` with its own bootstrap
@@ -649,15 +649,15 @@ describes the retained data; it does not by itself invalidate the point
 estimate. A large p-value means the discrepancy was not detectably larger
 than chance at this sample size -- it does not prove the model exactly
 right. The p-value uses the standard Monte Carlo plus-one correction,
-\(p=(1+\sum_b I(T_b\ge T_{obs}))/(B+1)\), so it is always strictly positive
+$p=(1+\sum_b I(T_b\ge T_{obs}))/(B+1)$, so it is always strictly positive
 regardless of the bootstrap sample count -- the naive
 `mean(null_stats >= observed)` can report an impossible exact zero with a
 finite bootstrap sample, overstating evidence against the fitted model. A
 refit that errors is dropped from the null distribution rather than
-aborting the whole bootstrap, so \(B\) above is the number of *successful*
+aborting the whole bootstrap, so $B$ above is the number of *successful*
 refits, not the requested sample count, whenever any refit fails; the
 `"ppeDiagnostics"` attribute reports `bootstrap_requested`,
-`bootstrap_successful`, and `bootstrap_failed` so \(B\) is never ambiguous.
+`bootstrap_successful`, and `bootstrap_failed` so $B$ is never ambiguous.
 
 The CvM p-value and the ECDF envelope use different bootstrap
 constructions and answer different questions: the CvM p-value's null
@@ -671,28 +671,28 @@ below).
 
 **`method = "exceedance"`** retains the original per-threshold estimator
 verbatim, for backward compatibility: for each model and positive threshold
-\(c\), it sets \(T_i=-\Delta_i\), counts \(K=\sum_i I(T_i>c)\), uses \(K/N\)
-as the base-study detection rate (clipped to \(0.5/(N+1)\) /
-\(1-0.5/(N+1)\) before inversion), and solves
-\(\Pr\{\chi^2_d(\lambda_0)>c\}=K/N\) for \(\lambda_0\) independently at every
-threshold (\(\lambda_0=0\) when the clipped rate is no greater than the
+$c$, it sets $T_i=-\Delta_i$, counts $K=\sum_i I(T_i>c)$, uses $K/N$
+as the base-study detection rate (clipped to $0.5/(N+1)$ /
+$1-0.5/(N+1)$ before inversion), and solves
+$\Pr\{\chi^2_d(\lambda_0)>c\}=K/N$ for $\lambda_0$ independently at every
+threshold ($\lambda_0=0$ when the clipped rate is no greater than the
 central tail probability; the search otherwise expands up to
-noncentrality \(10^6\)). Its outputs are named
+noncentrality $10^6$). Its outputs are named
 `threshold_exceedance_probability` and `threshold_implied_ncp` so they
 cannot be confused with the `distribution_mle` fields. It has no Type-I
 rendering and ignores comparison `mode` entirely. Its ribbon is a two-sided
-Clopper-Pearson interval for \(K/N\) mapped through the same inversion and
+Clopper-Pearson interval for $K/N$ mapped through the same inversion and
 linear scaling -- Monte Carlo uncertainty in the observed pass rate only,
 with the same caveats as above.
 
 **Degrees of freedom** come from `sseComparison(df = )` by default. When no
 explicit comparison is built, the fallback is
 
-\[
+$$
   d=\max\{1,\ p_{simulation}-p_{alternative}\},
-\]
+$$
 
-where each \(p\) is the number of schema THETA, OMEGA, and SIGMA
+where each $p$ is the number of schema THETA, OMEGA, and SIGMA
 *columns* -- a difference in schema column counts, not a difference in the
 number of *free, estimated* parameters. Fixed parameters, transformed
 parameters, or a schema mismatch unrelated to the actual nested restriction
@@ -705,7 +705,7 @@ wrong for fixed, constrained, boundary, or non-nested hypotheses, and is
 not directly comparable to PsN's own df in general. Supply an explicit
 `df` via `sseComparison()` for any confirmatory use.
 
-For a requested study size \(n\), with base size \(n_0\) (the number of
+For a requested study size $n$, with base size $n_0$ (the number of
 unique nonmissing values in a case-insensitive `ID` column, or the row count
 with unit recorded as observations when no such column exists), the default
 `studySizes` grid runs from one to the estimated size reaching `targetPower`
@@ -744,7 +744,7 @@ ordinary `ggplot2` objects:
 
 - `plotSSEParameterBias()` plots one parameter statistic;
 - `plotSSEParameterEstimates()` plots replicate estimates and optional truths;
-- `plotSSEOfvDistribution()` plots the stored \(\Delta\) distribution;
+- `plotSSEOfvDistribution()` plots the stored $\Delta$ distribution;
 - `plotSSEPower()` plots an empirical tail percentage by threshold;
 - `plotSSEPpePower()` plots the parametric sample-size extrapolation
   (`method = "distribution_mle"`, the default, or `"exceedance"`);
